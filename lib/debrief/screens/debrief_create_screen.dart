@@ -1,4 +1,7 @@
 // lib/debrief/screens/debrief_create_screen.dart
+// Modifications :
+//   1. Signature digitale du technicien (zone tactile)
+//   2. Signature sauvegardée en base64 dans Firestore avec le débrief
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -13,6 +16,7 @@ import '../../brief/models/type_intervention_model.dart';
 import '../models/debrief_model.dart';
 import '../services/debrief_service.dart';
 import '../services/type_intervention_debrief_service.dart';
+import '../../auth/component/signature_widget.dart';
 
 class DebriefCreateScreen extends StatefulWidget {
   final String? briefId;
@@ -49,8 +53,11 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
 
-  // ── Photos ────────────────────────────────────────────────────────────────
+  // Photos
   final List<File> _photos = [];
+
+  // Signature technicien
+  String? _signatureTechnicien;
 
   @override
   void initState() {
@@ -97,7 +104,8 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
         setState(() => _photos.add(File(image.path)));
       }
     } catch (e) {
-      _showMessage('Impossible d\'accéder à la ${source == ImageSource.camera ? "caméra" : "galerie"} : $e',
+      _showMessage(
+          'Impossible d\'accéder à la ${source == ImageSource.camera ? "caméra" : "galerie"} : $e',
           isError: true);
     }
   }
@@ -120,7 +128,8 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 40, height: 4,
+                width: 40,
+                height: 4,
                 margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
                   color: Colors.grey[400],
@@ -156,8 +165,7 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
 
   Future<void> _saveDebrief() async {
     if (!_formKey.currentState!.validate()) {
-      _showMessage('Veuillez remplir tous les champs obligatoires',
-          isError: true);
+      _showMessage('Veuillez remplir tous les champs obligatoires', isError: true);
       return;
     }
 
@@ -169,23 +177,28 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
         specifiques[key] = controller.text;
       });
 
-      // Note : les photos sont stockées localement pour l'instant.
-      // Pour les uploader en production, utiliser Firebase Storage.
+      // Ajouter la signature technicien dans les champs spécifiques
+      if (_signatureTechnicien != null) {
+        specifiques['signature_technicien'] = _signatureTechnicien;
+      }
+
       final debrief = DebriefModel(
         briefId: widget.briefId ?? '',
         numBt: widget.numBt ?? '',
         typeInterventionId: _typeDebrief?.id ?? '',
         referentId: context.read<UserProvider>().uid,
-        agenceId:
-        widget.agenceId ?? context.read<UserProvider>().agenceId,
+        agenceId: widget.agenceId ?? context.read<UserProvider>().agenceId,
         dateIntervention: _dateIntervention,
         commentaires: _commentairesController.text.trim(),
         champsSpecifiques: specifiques.isEmpty ? null : specifiques,
       );
 
       await _debriefService.createDebrief(debrief);
-      _showMessage('Débrief enregistré avec succès !'
-          '${_photos.isNotEmpty ? ' (${_photos.length} photo${_photos.length > 1 ? 's' : ''} jointe${_photos.length > 1 ? 's' : ''})' : ''}');
+      _showMessage(
+        'Débrief enregistré !'
+            '${_photos.isNotEmpty ? ' (${_photos.length} photo${_photos.length > 1 ? 's' : ''})' : ''}'
+            '${_signatureTechnicien != null ? ' ✍️' : ''}',
+      );
       Navigator.pop(context);
     } catch (e) {
       _showMessage('Erreur : $e', isError: true);
@@ -215,15 +228,24 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    final bgColor =
-    isDark ? const Color(0xFF121212) : const Color(0xFFF8F9FA);
+    final bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8F9FA);
 
     return Scaffold(
       backgroundColor: bgColor,
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF33A1C9),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          tooltip: 'Retour',
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text('Nouveau Débrief',
+            style: TextStyle(color: Colors.white, fontSize: 16)),
+        elevation: 0,
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding:
-          const EdgeInsets.symmetric(horizontal: 10.0, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 10),
           child: Form(
             key: _formKey,
             child: Column(
@@ -253,8 +275,8 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
       decoration: BoxDecoration(
         color: cardColor,
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-            color: const Color(0xFF33A1C9).withOpacity(0.1)),
+        border:
+        Border.all(color: const Color(0xFF33A1C9).withOpacity(0.1)),
         boxShadow: isDark
             ? []
             : [
@@ -280,8 +302,7 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color:
-                const Color(0xFF33A1C9).withOpacity(0.05),
+                color: const Color(0xFF33A1C9).withOpacity(0.05),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: DynamicFieldsSection(
@@ -296,8 +317,7 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
           // Travaux réalisés
           if (hasTravauxStatut) ...[
             const Text('Travaux réalisés *',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 13)),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
             const SizedBox(height: 8),
             _buildTravauxStatus(),
             const SizedBox(height: 15),
@@ -312,8 +332,12 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
           ),
           const SizedBox(height: 20),
 
-          // ── Section photos ───────────────────────────────────────
+          // Photos
           _buildPhotosSection(isDark),
+          const SizedBox(height: 20),
+
+          // ── Signature technicien ─────────────────────────────────
+          _buildSignatureSection(isDark),
           const SizedBox(height: 20),
 
           _buildFooterActions(),
@@ -322,11 +346,42 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
     );
   }
 
+  // ── Section signature ─────────────────────────────────────────────────────
+
+  Widget _buildSignatureSection(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.draw_outlined,
+                size: 16, color: const Color(0xFF33A1C9)),
+            const SizedBox(width: 6),
+            const Text(
+              'Signature',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        // Nom et rôle récupérés automatiquement via UserProvider
+        SignatureWidget(
+          roleLabel: 'Technicien',
+          initialSignatureBase64: _signatureTechnicien,
+          width: double.infinity,
+          height: 100,
+          onSignatureChanged: (b64) {
+            setState(() => _signatureTechnicien = b64);
+          },
+        ),
+      ],
+    );
+  }
+
   // ── Section photos ────────────────────────────────────────────────────────
 
   Widget _buildPhotosSection(bool isDark) {
-    final subtitleColor =
-    isDark ? Colors.grey[400] : Colors.grey[600];
+    final subtitleColor = isDark ? Colors.grey[400] : Colors.grey[600];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -336,25 +391,24 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
           children: [
             Row(children: [
               Icon(Icons.photo_library_outlined,
-                  size: 16,
-                  color: const Color(0xFF33A1C9)),
+                  size: 16, color: const Color(0xFF33A1C9)),
               const SizedBox(width: 6),
               Text(
                 'Photos${_photos.isNotEmpty ? ' (${_photos.length})' : ''}',
-                style: const TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 13),
+                style:
+                const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               ),
             ]),
             TextButton.icon(
               onPressed: _afficherChoixPhoto,
               icon: const Icon(Icons.add_a_photo_outlined, size: 16),
-              label: const Text('Ajouter',
-                  style: TextStyle(fontSize: 12)),
+              label:
+              const Text('Ajouter', style: TextStyle(fontSize: 12)),
               style: TextButton.styleFrom(
                 foregroundColor: const Color(0xFF33A1C9),
                 visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 4),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               ),
             ),
           ],
@@ -370,22 +424,14 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
                   : Colors.grey[100],
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                  color: isDark
-                      ? Colors.grey[700]!
-                      : Colors.grey[300]!,
-                  style: BorderStyle.solid),
+                  color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
             ),
             child: Column(children: [
               Icon(Icons.add_photo_alternate_outlined,
                   size: 32, color: Colors.grey[400]),
               const SizedBox(height: 6),
               Text('Aucune photo ajoutée',
-                  style: TextStyle(
-                      fontSize: 12, color: subtitleColor)),
-              const SizedBox(height: 2),
-              Text('Appuyez sur "Ajouter" pour joindre une photo',
-                  style: TextStyle(
-                      fontSize: 11, color: Colors.grey[500])),
+                  style: TextStyle(fontSize: 12, color: subtitleColor)),
             ]),
           )
         else
@@ -396,7 +442,6 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
               itemCount: _photos.length + 1,
               itemBuilder: (ctx, i) {
                 if (i == _photos.length) {
-                  // Bouton + à la fin
                   return GestureDetector(
                     onTap: _afficherChoixPhoto,
                     child: Container(
@@ -435,12 +480,8 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
-            child: Image.file(
-              _photos[index],
-              fit: BoxFit.cover,
-            ),
+            child: Image.file(_photos[index], fit: BoxFit.cover),
           ),
-          // Bouton supprimer
           Positioned(
             top: 4,
             right: 4,
@@ -452,18 +493,17 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
                   color: Colors.black.withOpacity(0.6),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.close,
-                    size: 14, color: Colors.white),
+                child:
+                const Icon(Icons.close, size: 14, color: Colors.white),
               ),
             ),
           ),
-          // Numéro de photo
           Positioned(
             bottom: 4,
             left: 4,
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 5, vertical: 2),
+              padding:
+              const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
               decoration: BoxDecoration(
                 color: Colors.black.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(4),
@@ -504,8 +544,7 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
       children: [
         Expanded(
           flex: 2,
-          child: _buildInfoItem(
-              'Numéro BT', widget.numBt ?? '-'),
+          child: _buildInfoItem('Numéro BT', widget.numBt ?? '-'),
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -514,16 +553,13 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
             context: context,
             label: 'Date',
             selectedDate: _dateIntervention,
-            onDateSelected: (d) =>
-                setState(() => _dateIntervention = d),
+            onDateSelected: (d) => setState(() => _dateIntervention = d),
           ),
         ),
         const SizedBox(width: 8),
         Expanded(
           flex: 3,
-          child: _buildInfoItem(
-              "Chef d'équipe",
-              widget.referentNom ?? 'Inconnu'),
+          child: _buildInfoItem("Chef d'équipe", widget.referentNom ?? 'Inconnu'),
         ),
       ],
     );
@@ -541,15 +577,14 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
         const SizedBox(height: 4),
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(
-              horizontal: 8, vertical: 8),
+          padding:
+          const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           decoration: BoxDecoration(
             color: const Color(0xFFF1F3F5),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Text(value,
-              style: const TextStyle(
-                  fontSize: 11, color: Colors.black87),
+              style: const TextStyle(fontSize: 11, color: Colors.black87),
               overflow: TextOverflow.ellipsis),
         ),
       ],
@@ -567,17 +602,14 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
     );
   }
 
-  Widget _buildStatusItem(
-      String label, TextEditingController controller) {
+  Widget _buildStatusItem(String label, TextEditingController controller) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(label,
-            style: const TextStyle(fontSize: 11)),
+        Text(label, style: const TextStyle(fontSize: 11)),
         Checkbox(
           value: controller.text == label,
-          onChanged: (v) =>
-              setState(() => controller.text = label),
+          onChanged: (v) => setState(() => controller.text = label),
           activeColor: const Color(0xFF33A1C9),
           visualDensity: VisualDensity.compact,
         ),
@@ -586,65 +618,28 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
   }
 
   Widget _buildFooterActions() {
-    return Wrap(
-      alignment: WrapAlignment.spaceBetween,
-      crossAxisAlignment: WrapCrossAlignment.end,
-      spacing: 10,
-      runSpacing: 10,
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildSmallSignatureBox('Signature chef'),
-            const SizedBox(width: 8),
-            _buildSmallSignatureBox('Signature tech.'),
-          ],
-        ),
         ElevatedButton(
           onPressed: _isSaving ? null : _saveDebrief,
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFA5D6A7),
+            backgroundColor: const Color(0xFF4CAF50),
             foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(
-                horizontal: 12, vertical: 8),
+            padding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(6)),
+                borderRadius: BorderRadius.circular(10)),
           ),
           child: _isSaving
               ? const SizedBox(
-              width: 12,
-              height: 12,
+              width: 16,
+              height: 16,
               child: CircularProgressIndicator(
                   color: Colors.white, strokeWidth: 2))
-              : const Text('Enregistrer',
+              : const Text('Enregistrer le Débrief',
               style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 11)),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSmallSignatureBox(String label) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label,
-            style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w600,
-                color: Colors.blueGrey[400])),
-        const SizedBox(height: 4),
-        Container(
-          height: 50,
-          width: 80,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF8F9FA),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.grey[200]!),
-          ),
-          child: Icon(Icons.edit_outlined,
-              color: Colors.grey[300], size: 18),
+                  fontWeight: FontWeight.bold, fontSize: 12)),
         ),
       ],
     );

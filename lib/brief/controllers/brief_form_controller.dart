@@ -1,7 +1,7 @@
 // lib/brief/controllers/brief_form_controller.dart
-// Modification v2 : auto-sauvegarde avec debounce (500ms).
-// Quand un champ change, si le brief est déjà sauvegardé (lastSavedBriefId != null),
-// on met à jour Firestore automatiquement après 500ms sans frappe.
+// Ajouts v3 :
+//   - saveBriefWithExtras() : inclut les signatures dans champsSpecifiques
+//   - autoSaveSignatures()  : met à jour les signatures en Firestore sans refaire tout le brief
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -50,7 +50,6 @@ class BriefFormController extends ChangeNotifier {
     }
   }
 
-  /// Déclenche un auto-save après 500ms si le brief est déjà enregistré
   void scheduleAutoSave() {
     if (lastSavedBriefId == null) return;
     _debounceTimer?.cancel();
@@ -80,7 +79,7 @@ class BriefFormController extends ChangeNotifier {
             ? commentairesController.text
             : null,
         'champs_specifiques':
-            champsSpecifiques.isNotEmpty ? champsSpecifiques : null,
+        champsSpecifiques.isNotEmpty ? champsSpecifiques : null,
       });
     } catch (e) {
       dev.log('Erreur auto-save : $e');
@@ -90,9 +89,32 @@ class BriefFormController extends ChangeNotifier {
     }
   }
 
+  /// Met à jour uniquement les signatures dans Firestore
+  Future<void> autoSaveSignatures({
+    required String briefId,
+    String? signatureReferent,
+    String? signatureTechnicien,
+  }) async {
+    try {
+      final Map<String, dynamic> update = {};
+      // On utilise une mise à jour partielle des champs spécifiques
+      if (signatureReferent != null) {
+        update['champs_specifiques.signature_referent'] = signatureReferent;
+      }
+      if (signatureTechnicien != null) {
+        update['champs_specifiques.signature_technicien'] = signatureTechnicien;
+      }
+      if (update.isNotEmpty) {
+        await _briefService.updateBrief(briefId, update);
+      }
+    } catch (e) {
+      dev.log('Erreur auto-save signatures : $e');
+    }
+  }
+
   void onTypeChanged(TypeInterventionModel? newType) {
     final oldControllers =
-        Map<String, TextEditingController>.from(dynamicControllers);
+    Map<String, TextEditingController>.from(dynamicControllers);
     dynamicControllers.clear();
     selectedType = newType;
     if (newType != null) {
@@ -112,10 +134,25 @@ class BriefFormController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Sauvegarde classique (sans extras)
   Future<bool> saveBrief({
     required String referentId,
     required String agenceId,
     required String siteId,
+  }) async {
+    return saveBriefWithExtras(
+      referentId: referentId,
+      agenceId: agenceId,
+      siteId: siteId,
+    );
+  }
+
+  /// Sauvegarde avec champs extras (signatures, etc.)
+  Future<bool> saveBriefWithExtras({
+    required String referentId,
+    required String agenceId,
+    required String siteId,
+    Map<String, dynamic>? extraChamps,
   }) async {
     if (selectedType == null) return false;
     isSaving = true;
@@ -123,9 +160,16 @@ class BriefFormController extends ChangeNotifier {
 
     try {
       final Map<String, dynamic> champsSpecifiques = {};
+
+      // Champs dynamiques du type d'intervention
       dynamicControllers.forEach((key, controller) {
         champsSpecifiques[key] = controller.text;
       });
+
+      // Champs extras (signatures, etc.)
+      if (extraChamps != null) {
+        champsSpecifiques.addAll(extraChamps);
+      }
 
       final brief = BriefModel(
         numBt: numBtController.text,
@@ -143,13 +187,17 @@ class BriefFormController extends ChangeNotifier {
             ? commentairesController.text
             : null,
         champsSpecifiques:
-            champsSpecifiques.isNotEmpty ? champsSpecifiques : null,
+        champsSpecifiques.isNotEmpty ? champsSpecifiques : null,
       );
 
-      lastSavedBriefId = await _briefService.createBrief(brief);
-
-      // Activer l'auto-save sur tous les contrôleurs maintenant que le brief existe
-      _attachAutoSaveListeners();
+      if (lastSavedBriefId != null) {
+        // Mise à jour si déjà sauvegardé
+        await _briefService.updateBrief(lastSavedBriefId!, brief.toFirestore());
+      } else {
+        // Création
+        lastSavedBriefId = await _briefService.createBrief(brief);
+        _attachAutoSaveListeners();
+      }
 
       isSaving = false;
       notifyListeners();

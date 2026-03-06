@@ -1,13 +1,14 @@
 // lib/brief/screens/brief_create_screen.dart
-// Modifications par rapport au code de ta collègue :
-//   1. Utilise UserProvider pour les vraies infos (remplace USER_ID_TEMP etc.)
-//   2. Si brief.estVerrouille → champs grisés + bandeau orange d'avertissement
-//   3. Accepte un briefExistant optionnel pour la consultation depuis brief_view_screen
+// Modifications :
+//   1. Bouton retour (AppBar flèche + bouton Accueil dans header) vers HomeScreen
+//   2. Signatures digitales référent + technicien (zone tactile)
+//   3. Signatures sauvegardées en base64 dans Firestore avec le brief
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:grdf_app/welcome_screen.dart';
 import 'package:grdf_app/auth/providers/user_provider.dart';
+import 'package:grdf_app/home/screens/home_screen.dart';
 import '../../debrief/screens/debrief_create_screen.dart';
 import '../controllers/brief_form_controller.dart';
 import '../models/brief_model.dart';
@@ -15,6 +16,7 @@ import '../widgets/app_header.dart';
 import '../widgets/dynamic_fields_section.dart';
 import '../widgets/form_fields.dart';
 import '../models/type_intervention_model.dart';
+import '../../auth/component/signature_widget.dart';
 
 class BriefCreateScreen extends StatefulWidget {
   /// null → mode création | fourni → mode consultation (verrouillé si estVerrouille)
@@ -29,6 +31,10 @@ class BriefCreateScreen extends StatefulWidget {
 class _BriefCreateScreenState extends State<BriefCreateScreen> {
   final _formKey = GlobalKey<FormState>();
   final _controller = BriefFormController();
+
+  // Signatures base64
+  String? _signatureReferent;
+  String? _signatureTechnicien;
 
   bool get _estVerrouille =>
       widget.briefExistant != null && widget.briefExistant!.estVerrouille;
@@ -52,6 +58,9 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
     _controller.consignesController.text = brief.consignes;
     _controller.commentairesController.text = brief.commentaires ?? '';
     _controller.dateIntervention = brief.dateIntervention;
+    // Charger signatures existantes
+    _signatureReferent = brief.champsSpecifiques?['signature_referent'];
+    _signatureTechnicien = brief.champsSpecifiques?['signature_technicien'];
     if (brief.typeInterventionId.isNotEmpty) {
       try {
         final type = _controller.typesIntervention
@@ -84,14 +93,25 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
     }
 
     final user = context.read<UserProvider>();
-    final success = await _controller.saveBrief(
+
+    // Inclure les signatures dans les champs spécifiques
+    final signaturesExtra = <String, dynamic>{};
+    if (_signatureReferent != null) {
+      signaturesExtra['signature_referent'] = _signatureReferent;
+    }
+    if (_signatureTechnicien != null) {
+      signaturesExtra['signature_technicien'] = _signatureTechnicien;
+    }
+
+    final success = await _controller.saveBriefWithExtras(
       referentId: user.uid,
       agenceId: user.agenceId,
       siteId: user.siteId,
+      extraChamps: signaturesExtra,
     );
 
     if (success) {
-      _showMessage('Brief enregistré ! Le bouton "Créer un débrief" est maintenant activé.');
+      _showMessage('Brief enregistré avec succès !');
     } else {
       _showMessage("Erreur lors de l'enregistrement", isError: true);
     }
@@ -107,6 +127,14 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
     );
   }
 
+  void _retourAccueil() {
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const HomeScreen()),
+          (route) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_controller.isLoading) {
@@ -117,6 +145,20 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
+      // AppBar avec flèche retour
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF33A1C9),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          tooltip: 'Retour accueil',
+          onPressed: _retourAccueil,
+        ),
+        title: Text(
+          widget.briefExistant != null ? 'Consultation Brief' : 'Nouveau Brief',
+          style: const TextStyle(color: Colors.white, fontSize: 16),
+        ),
+        elevation: 0,
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 15.0, vertical: 20),
@@ -124,18 +166,9 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
             key: _formKey,
             child: Column(
               children: [
-                AppHeader(
-                  onDeconnexionPressed: () {
-                    context.read<UserProvider>().clearUser();
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (context) => const WelcomeScreen()),
-                          (route) => false,
-                    );
-                  },
-                ),
+                // Header avec bouton Accueil
+                _buildHeader(),
                 const SizedBox(height: 20),
-                // Bandeau verrouillage
                 if (_estVerrouille) _buildBandeauVerrouillage(),
                 if (_estVerrouille) const SizedBox(height: 12),
                 _buildFormContainer(),
@@ -143,6 +176,48 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// Header avec logo + bouton Accueil + bouton Visualisation + Déconnexion
+  Widget _buildHeader() {
+    return Row(
+      children: [
+        Image.asset('assets/img/logo.png', height: 40,
+            errorBuilder: (_, __, ___) => const SizedBox(width: 40)),
+        const Spacer(),
+        _buildHeaderBtn('Accueil', Icons.home_outlined, _retourAccueil),
+        const SizedBox(width: 6),
+        _buildHeaderBtn('Briefs', Icons.list_alt_outlined, () {
+          Navigator.pushNamed(context, '/briefs');
+        }),
+        const SizedBox(width: 6),
+        _buildHeaderBtn('Déconnexion', Icons.logout, () {
+          context.read<UserProvider>().clearUser();
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+                (route) => false,
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _buildHeaderBtn(String text, IconData icon, VoidCallback onPressed) {
+    return ElevatedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 12),
+      label: Text(text, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF33A1C9),
+        elevation: 0,
+        side: const BorderSide(color: Color(0xFF33A1C9), width: 1),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        minimumSize: const Size(0, 30),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
@@ -173,7 +248,7 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Un débrief a été validé pour ce brief. Les champs ne peuvent plus être modifiés.',
+                  'Un débrief a été validé pour ce brief.',
                   style: TextStyle(fontSize: 12, color: Colors.orange[700]),
                 ),
               ],
@@ -258,7 +333,6 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
                 ),
               ],
             ),
-            // Bouton débrief uniquement en mode création
             if (widget.briefExistant == null)
               ElevatedButton(
                 onPressed: isBriefSaved
@@ -292,7 +366,6 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
               ),
           ],
         ),
-        // Indicateur auto-save
         if (isBriefSaved && !_estVerrouille) ...[
           const SizedBox(height: 6),
           Row(
@@ -304,13 +377,11 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
                     child: CircularProgressIndicator(
                         strokeWidth: 1.5, color: Color(0xFF33A1C9))),
                 const SizedBox(width: 5),
-                Text('Sauvegarde en cours...',
-                    style: TextStyle(fontSize: 10, color: Colors.grey[500])),
+                Text('Sauvegarde...', style: TextStyle(fontSize: 10, color: Colors.grey[500])),
               ] else ...[
-                Icon(Icons.check_circle_outline,
-                    size: 12, color: Colors.green[400]),
+                Icon(Icons.check_circle_outline, size: 12, color: Colors.green[400]),
                 const SizedBox(width: 4),
-                Text('Modifications sauvegardées automatiquement',
+                Text('Sauvegardé automatiquement',
                     style: TextStyle(fontSize: 10, color: Colors.green[400])),
               ]
             ],
@@ -383,7 +454,7 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
           },
         ),
         const SizedBox(height: 15),
-        FormFields.buildLabel('Annalyse des risques'),
+        FormFields.buildLabel('Analyse des risques'),
         FormFields.buildTextField(
             controller: _controller.risquesController,
             isRequired: false,
@@ -418,14 +489,55 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
       spacing: 20,
       runSpacing: 20,
       children: [
+        // ── Signatures digitales ─────────────────────────────────
         Row(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            FormFields.buildSignatureBox('Signature du référent'),
+            // Signature référent : nom auto depuis UserProvider
+            SignatureWidget(
+              roleLabel: 'Référent',
+              initialSignatureBase64: _signatureReferent,
+              readOnly: _estVerrouille,
+              width: 140,
+              height: 80,
+              onSignatureChanged: (b64) {
+                setState(() => _signatureReferent = b64);
+                if (_controller.lastSavedBriefId != null && b64 != null) {
+                  _controller.autoSaveSignatures(
+                    briefId: _controller.lastSavedBriefId!,
+                    signatureReferent: b64,
+                    signatureTechnicien: _signatureTechnicien,
+                  );
+                }
+              },
+            ),
             const SizedBox(width: 15),
-            FormFields.buildSignatureBox('Signature du technicien'),
+            // Signature technicien : nom saisi dans le champ "Chef d'équipe"
+            SignatureWidget(
+              roleLabel: 'Technicien',
+              forceNom: _controller.referentController.text.isNotEmpty
+                  ? _controller.referentController.text
+                  : null,
+              initialSignatureBase64: _signatureTechnicien,
+              readOnly: _estVerrouille,
+              width: 140,
+              height: 80,
+              onSignatureChanged: (b64) {
+                setState(() => _signatureTechnicien = b64);
+                if (_controller.lastSavedBriefId != null && b64 != null) {
+                  _controller.autoSaveSignatures(
+                    briefId: _controller.lastSavedBriefId!,
+                    signatureReferent: _signatureReferent,
+                    signatureTechnicien: b64,
+                  );
+                }
+              },
+            ),
           ],
         ),
+
+        // ── Bouton Enregistrer ───────────────────────────────────
         if (!_estVerrouille)
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -444,8 +556,7 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
                     ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(
-                        color: Colors.white, strokeWidth: 2))
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                     : const Text('Enregistrer le Brief',
                     style: TextStyle(fontWeight: FontWeight.bold)),
               ),
