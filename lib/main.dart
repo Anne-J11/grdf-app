@@ -1,18 +1,19 @@
+// lib/main.dart
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'auth/providers/user_provider.dart';
+import 'core/providers/theme_provider.dart';
 import 'core/services/archive_service.dart';
+import 'firebase_options.dart';
 import 'init_database.dart';
 import 'welcome_screen.dart';
-import 'firebase_options.dart'; // à générer
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-
   await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform, // ✅
+    options: DefaultFirebaseOptions.currentPlatform,
   );
 
   bool isInitialized = await InitDatabase.isDatabaseInitialized();
@@ -24,8 +25,11 @@ void main() async {
   await ArchiveService().lancerArchivageAutomatique();
 
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => UserProvider(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => UserProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+      ],
       child: const MyApp(),
     ),
   );
@@ -36,12 +40,14 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = context.watch<ThemeProvider>();
+
     return MaterialApp(
       title: 'GRDF Brief App',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
+      theme: ThemeProvider.lightTheme,
+      darkTheme: ThemeProvider.darkTheme,
+      themeMode: themeProvider.themeMode,
       home: const WelcomeScreen(),
     );
   }

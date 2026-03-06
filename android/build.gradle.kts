@@ -5,6 +5,8 @@ allprojects {
     }
 }
 
+plugins {
+}
 val newBuildDir: Directory =
     rootProject.layout.buildDirectory
         .dir("../../build")
