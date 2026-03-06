@@ -130,7 +130,7 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
                     Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(builder: (context) => const WelcomeScreen()),
-                      (route) => false,
+                          (route) => false,
                     );
                   },
                 ),
@@ -263,19 +263,19 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
               ElevatedButton(
                 onPressed: isBriefSaved
                     ? () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => DebriefCreateScreen(
-                              briefId: _controller.lastSavedBriefId!,
-                              numBt: _controller.numBtController.text,
-                              typeInterventionNom: _controller.selectedType?.nom,
-                              referentNom: _controller.referentController.text.isNotEmpty
-                                  ? _controller.referentController.text
-                                  : user.nomComplet,
-                              agenceId: user.agenceId,
-                            ),
-                          ),
-                        )
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => DebriefCreateScreen(
+                      briefId: _controller.lastSavedBriefId!,
+                      numBt: _controller.numBtController.text,
+                      typeInterventionNom: _controller.selectedType?.nom,
+                      referentNom: _controller.referentController.text.isNotEmpty
+                          ? _controller.referentController.text
+                          : user.nomComplet,
+                      agenceId: user.agenceId,
+                    ),
+                  ),
+                )
                     : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: isBriefSaved ? Colors.orange : Colors.grey[300],
@@ -378,9 +378,9 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
           onChanged: _estVerrouille
               ? null
               : (val) {
-                  _controller.onTypeChanged(val);
-                  _controller.invalidateSavedBrief();
-                },
+            _controller.onTypeChanged(val);
+            _controller.invalidateSavedBrief();
+          },
         ),
         const SizedBox(height: 15),
         FormFields.buildLabel('Annalyse des risques'),
@@ -431,16 +431,6 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.photo_camera_outlined),
-                label: const Text('Importer une photo'),
-                style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFF33A1C9),
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-              const SizedBox(height: 8),
               ElevatedButton(
                 onPressed: _controller.isSaving ? null : _saveBrief,
                 style: ElevatedButton.styleFrom(
@@ -452,12 +442,12 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
                 ),
                 child: _controller.isSaving
                     ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2))
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        color: Colors.white, strokeWidth: 2))
                     : const Text('Enregistrer le Brief',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ],
           )
