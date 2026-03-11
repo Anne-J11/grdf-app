@@ -1,10 +1,4 @@
 // lib/home/screens/home_screen.dart
-// Modifications :
-//   - Affiche le nom + rôle de l'utilisateur connecté (via UserProvider)
-//   - Ajoute le bouton "Visualisation des débriefs"
-//   - Ajoute le bouton "Paramètres" (pour l'archivage manuel)
-//   - La déconnexion vide maintenant le UserProvider
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:grdf_app/welcome_screen.dart';
@@ -20,85 +14,91 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = context.watch<UserProvider>();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF0F2F5);
+    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final primaryColor = isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
+    final subtitleColor = isDark ? Colors.grey[400]! : Colors.grey[600]!;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F2F5),
+      backgroundColor: bgColor,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20.0),
           child: Column(
             children: [
-              // Header
+              // ── Header ──────────────────────────────────────────────────
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Image.asset(
                     'assets/img/logo.png',
                     height: 60,
-                    errorBuilder: (context, error, stackTrace) =>
-                        const Icon(Icons.image, size: 60, color: Colors.grey),
+                    errorBuilder: (_, __, ___) =>
+                        Icon(Icons.image, size: 60, color: Colors.grey[400]),
                   ),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      // Nom + rôle de l'utilisateur connecté
                       if (user.nomComplet.isNotEmpty) ...[
-                        Text(user.nomComplet,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                                color: Color(0xFF33A1C9))),
                         Text(
-                            user.isManager ? 'Manager' : user.isReferent ? 'Référent' : 'Technicien',
-                            style: TextStyle(
-                                fontSize: 11, color: Colors.grey[600])),
+                          user.nomComplet,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: primaryColor,
+                          ),
+                        ),
+                        Text(
+                          user.isManager
+                              ? 'Manager'
+                              : user.isReferent
+                              ? 'Référent'
+                              : 'Technicien',
+                          style: TextStyle(fontSize: 11, color: subtitleColor),
+                        ),
                         const SizedBox(height: 6),
                       ],
                       Row(
                         children: [
-                          // Bouton Paramètres
-                          OutlinedButton(
+                          ElevatedButton(
                             onPressed: () => Navigator.push(
                               context,
                               MaterialPageRoute(
-                                  builder: (context) =>
-                                      const SettingsScreen()),
+                                  builder: (_) => const SettingsScreen()),
                             ),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFF33A1C9),
-                              side: const BorderSide(
-                                  color: Color(0xFF33A1C9)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryColor,
+                              foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(5)),
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 10, vertical: 4),
                               minimumSize: const Size(0, 28),
-                              visualDensity: VisualDensity.compact,
+                              elevation: 0,
                             ),
-                            child: const Text('Paramètres',
-                                style: TextStyle(fontSize: 11)),
+                            child: const Icon(Icons.settings, size: 14),
                           ),
-                          const SizedBox(width: 8),
-                          // Bouton Déconnexion
+                          const SizedBox(width: 6),
                           ElevatedButton(
                             onPressed: () {
-                              context.read<UserProvider>().clearUser();
+                              user.clearUser();
                               Navigator.pushAndRemoveUntil(
                                 context,
                                 MaterialPageRoute(
-                                    builder: (context) =>
-                                        const WelcomeScreen()),
-                                (route) => false,
+                                    builder: (_) => const WelcomeScreen()),
+                                    (route) => false,
                               );
                             },
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF33A1C9),
+                              backgroundColor: primaryColor,
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(5)),
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 15, vertical: 4),
                               minimumSize: const Size(0, 28),
+                              elevation: 0,
                             ),
                             child: const Text('Déconnexion',
                                 style: TextStyle(fontSize: 11)),
@@ -111,48 +111,46 @@ class HomeScreen extends StatelessWidget {
               ),
               const SizedBox(height: 60),
 
-              // Carte centrale
+              // ── Carte centrale ───────────────────────────────────────────
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                    vertical: 40, horizontal: 20),
+                padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: cardColor,
                   borderRadius: BorderRadius.circular(15),
-                  border: Border.all(
-                      color: const Color(0xFF33A1C9), width: 2),
+                  border: Border.all(color: primaryColor, width: 2),
+                  boxShadow: isDark
+                      ? []
+                      : [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    )
+                  ],
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _buildHomeButton(
                       text: 'Créer un brief',
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) =>
-                                const BriefCreateScreen()),
-                      ),
+                      onPressed: () => Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const BriefCreateScreen())),
+                      color: primaryColor,
                     ),
                     const SizedBox(height: 30),
                     _buildHomeButton(
                       text: 'Visualisation des briefs',
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) =>
-                                const BriefViewScreen()),
-                      ),
+                      onPressed: () => Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const BriefViewScreen())),
+                      color: primaryColor,
                     ),
                     const SizedBox(height: 30),
                     _buildHomeButton(
                       text: 'Visualisation des débriefs',
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) =>
-                                const DebriefViewScreen()),
-                      ),
+                      onPressed: () => Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const DebriefViewScreen())),
+                      color: primaryColor,
                     ),
                   ],
                 ),
@@ -164,20 +162,22 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHomeButton(
-      {required String text, required VoidCallback onPressed}) {
+  Widget _buildHomeButton({
+    required String text,
+    required VoidCallback onPressed,
+    required Color color,
+  }) {
     return ElevatedButton(
       onPressed: onPressed,
       style: ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFF33A1C9),
+        backgroundColor: color,
         foregroundColor: Colors.white,
         minimumSize: const Size(double.infinity, 55),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         elevation: 0,
       ),
       child: Text(text,
-          style: const TextStyle(
-              fontSize: 22, fontWeight: FontWeight.w500),
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w500),
           textAlign: TextAlign.center),
     );
   }

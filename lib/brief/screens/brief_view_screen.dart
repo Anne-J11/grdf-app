@@ -1,9 +1,4 @@
 // lib/brief/screens/brief_view_screen.dart
-// Modifications v2 :
-//   - Boutons Modifier et Supprimer sur chaque brief (si non verrouillé)
-//   - Débrief affiché visuellement lié sous son brief (expandable)
-//   - Sélecteur d'agence (inchangé)
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../auth/providers/user_provider.dart';
@@ -11,11 +6,10 @@ import '../../auth/models/agence_model.dart';
 import '../../firestore_service.dart';
 import '../models/brief_model.dart';
 import '../services/brief_service.dart';
-import '../../debrief/models/debrief_model.dart';
-import '../../debrief/services/debrief_service.dart';
 import '../widgets/brief_card.dart';
 import '../widgets/brief_details_modal.dart';
-import 'brief_create_screen.dart';
+import '../screens/brief_create_screen.dart';
+import '../../debrief/screens/debrief_create_screen.dart';
 
 class BriefViewScreen extends StatefulWidget {
   const BriefViewScreen({super.key});
@@ -26,15 +20,10 @@ class BriefViewScreen extends StatefulWidget {
 
 class _BriefViewScreenState extends State<BriefViewScreen> {
   final BriefService _briefService = BriefService();
-  final DebriefService _debriefService = DebriefService();
   final FirestoreService _firestoreService = FirestoreService();
 
   List<BriefModel> _briefs = [];
   List<AgenceModel> _agences = [];
-  // Cache des débriefs chargés par briefId
-  final Map<String, DebriefModel?> _debriefCache = {};
-  // Briefs dont le panneau débrief est ouvert
-  final Set<String> _expanded = {};
   String? _agenceSelectionneeId;
   bool _isLoading = true;
 
@@ -49,12 +38,19 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
 
   Future<void> _loadAgences() async {
     try {
-      final agences = await _firestoreService.getAgences();
       final user = context.read<UserProvider>();
+      // Technicien : ne voit que son agence, pas de sélecteur
+      if (user.isTechnicien) {
+        setState(() {
+          _agenceSelectionneeId = user.agenceId;
+        });
+        return;
+      }
+      final agences = await _firestoreService.getAgences();
       setState(() {
         _agences = agences;
         _agenceSelectionneeId =
-            user.agenceId.isNotEmpty ? user.agenceId : null;
+        user.agenceId.isNotEmpty ? user.agenceId : null;
       });
     } catch (e) {
       debugPrint('Erreur chargement agences : $e');
@@ -64,15 +60,18 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
   Future<void> _loadBriefs() async {
     setState(() => _isLoading = true);
     try {
+      final user = context.read<UserProvider>();
       List<BriefModel> briefs = [];
-      if (_agenceSelectionneeId != null) {
-        briefs =
-            await _briefService.getBriefsByAgence(_agenceSelectionneeId!);
+
+      if (user.isTechnicien) {
+        // Technicien : uniquement ses propres briefs (par referentId = son uid)
+        briefs = await _briefService.getBriefsByReferent(user.uid);
+      } else if (_agenceSelectionneeId != null) {
+        briefs = await _briefService.getBriefsByAgence(_agenceSelectionneeId!);
       }
+
       setState(() {
         _briefs = briefs;
-        _debriefCache.clear();
-        _expanded.clear();
         _isLoading = false;
       });
     } catch (e) {
@@ -85,25 +84,12 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
     }
   }
 
-  // Charge le débrief d'un brief (avec cache)
-  Future<void> _loadDebrief(String briefId) async {
-    if (_debriefCache.containsKey(briefId)) return;
-    try {
-      final debrief = await _debriefService.getDebriefByBriefId(briefId);
-      setState(() => _debriefCache[briefId] = debrief);
-    } catch (_) {
-      setState(() => _debriefCache[briefId] = null);
-    }
-  }
-
-  Future<void> _supprimerBrief(BriefModel brief) async {
+  Future<void> _deleteBrief(BriefModel brief) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: const Text('Supprimer le brief'),
-        content: Text(
-            'Supprimer le brief BT ${brief.numBt} ? Cette action est irréversible.'),
+        title: const Text('Supprimer ce brief ?'),
+        content: const Text('Cette action est irréversible.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -124,13 +110,15 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('Brief supprimé'), backgroundColor: Colors.green),
+              content: Text('Brief supprimé'),
+              backgroundColor: Colors.green),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Erreur: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -138,8 +126,12 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8F9FA);
+    final user = context.watch<UserProvider>();
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: bgColor,
       appBar: AppBar(
         backgroundColor: const Color(0xFF33A1C9),
         title: const Text('Liste des Briefs',
@@ -154,21 +146,27 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
       ),
       body: Column(
         children: [
-          _buildAgenceSelector(),
-          Expanded(child: _buildBody()),
+          // Sélecteur agence uniquement pour référents/managers
+          if (!user.isTechnicien) _buildAgenceSelector(isDark),
+          Expanded(child: _buildBody(isDark)),
         ],
       ),
     );
   }
 
-  Widget _buildAgenceSelector() {
+  Widget _buildAgenceSelector(bool isDark) {
     if (_agences.isEmpty) return const SizedBox.shrink();
+    final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+
     return Container(
-      color: Colors.white,
+      color: bgColor,
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
       child: Row(
         children: [
-          Icon(Icons.business_outlined, size: 16, color: Colors.grey[600]),
+          Icon(Icons.business_outlined,
+              size: 16,
+              color: isDark ? Colors.grey[400] : Colors.grey[600]),
           const SizedBox(width: 8),
           Expanded(
             child: DropdownButtonHideUnderline(
@@ -176,12 +174,14 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
                 value: _agenceSelectionneeId,
                 isExpanded: true,
                 isDense: true,
-                style: const TextStyle(fontSize: 13, color: Colors.black87),
+                dropdownColor: bgColor,
+                style: TextStyle(fontSize: 13, color: textColor),
                 items: _agences
                     .map((a) => DropdownMenuItem<String?>(
-                          value: a.id,
-                          child: Text(a.nom),
-                        ))
+                  value: a.id,
+                  child: Text(a.nom,
+                      style: TextStyle(color: textColor)),
+                ))
                     .toList(),
                 onChanged: (val) {
                   setState(() => _agenceSelectionneeId = val);
@@ -195,7 +195,7 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody(bool isDark) {
     if (_isLoading) {
       return const Center(
           child: CircularProgressIndicator(color: Color(0xFF33A1C9)));
@@ -205,10 +205,14 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.folder_open, size: 80, color: Colors.grey[300]),
+            Icon(Icons.folder_open,
+                size: 80,
+                color: isDark ? Colors.grey[700] : Colors.grey[300]),
             const SizedBox(height: 16),
             Text('Aucun brief trouvé',
-                style: TextStyle(fontSize: 18, color: Colors.grey[600])),
+                style: TextStyle(
+                    fontSize: 18,
+                    color: isDark ? Colors.grey[500] : Colors.grey[600])),
           ],
         ),
       );
@@ -225,12 +229,10 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
 
   Widget _buildBriefItem(BriefModel brief) {
     final briefId = brief.id!;
-    final isExpanded = _expanded.contains(briefId);
     final user = context.read<UserProvider>();
 
     return Column(
       children: [
-        // ── Carte brief + actions ──────────────────────────────────
         Stack(
           children: [
             BriefCard(
@@ -240,7 +242,7 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                        builder: (context) =>
+                        builder: (_) =>
                             BriefCreateScreen(briefExistant: brief)),
                   );
                 } else {
@@ -248,7 +250,6 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
                 }
               },
             ),
-            // Boutons Modifier / Supprimer (si non verrouillé)
             if (!brief.estVerrouille)
               Positioned(
                 top: 4,
@@ -256,226 +257,54 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _buildActionButton(
-                      icon: Icons.edit_outlined,
-                      color: const Color(0xFF33A1C9),
+                    // Modifier
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined,
+                          size: 18, color: Color(0xFF33A1C9)),
                       tooltip: 'Modifier',
-                      onTap: () => Navigator.push(
+                      onPressed: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) =>
+                                  BriefCreateScreen(briefExistant: brief)),
+                        );
+                        _loadBriefs();
+                      },
+                    ),
+                    // Supprimer (référent/manager uniquement)
+                    if (user.isReferent)
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline,
+                            size: 18, color: Colors.redAccent),
+                        tooltip: 'Supprimer',
+                        onPressed: () => _deleteBrief(brief),
+                      ),
+                    // Créer débrief
+                    IconButton(
+                      icon: const Icon(Icons.assignment_turned_in_outlined,
+                          size: 18, color: Colors.green),
+                      tooltip: 'Créer débrief',
+                      onPressed: () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                            builder: (context) =>
-                                BriefCreateScreen(briefExistant: brief)),
+                          builder: (_) => DebriefCreateScreen(
+                            briefId: briefId,
+                            numBt: brief.numBt,
+                            referentNom: brief.referentNom,
+                            typeInterventionNom: brief.typeInterventionNom,
+                            agenceId: brief.agenceId,
+                          ),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 4),
-                    _buildActionButton(
-                      icon: Icons.delete_outline,
-                      color: Colors.red,
-                      tooltip: 'Supprimer',
-                      onTap: () => _supprimerBrief(brief),
                     ),
                   ],
                 ),
               ),
           ],
         ),
-
-        // ── Bandeau débrief lié ────────────────────────────────────
-        if (brief.estVerrouille)
-          _buildDebriefBandeau(brief, isExpanded),
-
-        const SizedBox(height: 4),
+        const SizedBox(height: 8),
       ],
-    );
-  }
-
-  Widget _buildActionButton({
-    required IconData icon,
-    required Color color,
-    required String tooltip,
-    required VoidCallback onTap,
-  }) {
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(6),
-        child: Container(
-          padding: const EdgeInsets.all(5),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: color.withOpacity(0.3)),
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
-                  blurRadius: 4,
-                  offset: const Offset(0, 1))
-            ],
-          ),
-          child: Icon(icon, size: 15, color: color),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDebriefBandeau(BriefModel brief, bool isExpanded) {
-    final briefId = brief.id!;
-
-    return GestureDetector(
-      onTap: () async {
-        if (!isExpanded) await _loadDebrief(briefId);
-        setState(() {
-          if (isExpanded) {
-            _expanded.remove(briefId);
-          } else {
-            _expanded.add(briefId);
-          }
-        });
-      },
-      child: Container(
-        margin: const EdgeInsets.only(left: 16, right: 16, bottom: 4),
-        decoration: BoxDecoration(
-          color: isExpanded
-              ? const Color(0xFF33A1C9).withOpacity(0.05)
-              : Colors.white,
-          borderRadius: isExpanded
-              ? const BorderRadius.only(
-                  bottomLeft: Radius.circular(12),
-                  bottomRight: Radius.circular(12))
-              : BorderRadius.circular(8),
-          border: Border.all(
-            color: const Color(0xFF33A1C9).withOpacity(0.2),
-          ),
-        ),
-        child: Column(
-          children: [
-            // En-tête du bandeau
-            Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                children: [
-                  Icon(Icons.assignment_turned_in_outlined,
-                      size: 14, color: const Color(0xFF33A1C9)),
-                  const SizedBox(width: 6),
-                  const Text(
-                    'Débrief associé',
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF33A1C9)),
-                  ),
-                  const Spacer(),
-                  Icon(
-                    isExpanded
-                        ? Icons.keyboard_arrow_up
-                        : Icons.keyboard_arrow_down,
-                    size: 16,
-                    color: const Color(0xFF33A1C9),
-                  ),
-                ],
-              ),
-            ),
-            // Contenu débrief (si déplié)
-            if (isExpanded) _buildDebriefContenu(briefId),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDebriefContenu(String briefId) {
-    if (!_debriefCache.containsKey(briefId)) {
-      return const Padding(
-        padding: EdgeInsets.all(12),
-        child: Center(
-            child: SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Color(0xFF33A1C9)))),
-      );
-    }
-
-    final debrief = _debriefCache[briefId];
-    if (debrief == null) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        child: Text('Aucun débrief trouvé',
-            style: TextStyle(fontSize: 12, color: Colors.grey[500])),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Divider(height: 1),
-          const SizedBox(height: 8),
-          // Date
-          _buildDebriefRow(
-            Icons.calendar_today_outlined,
-            'Date',
-            '${debrief.dateIntervention.day.toString().padLeft(2, '0')}/${debrief.dateIntervention.month.toString().padLeft(2, '0')}/${debrief.dateIntervention.year}',
-          ),
-          // Aléas
-          if (debrief.aleasRencontres != null &&
-              debrief.aleasRencontres!.isNotEmpty)
-            _buildDebriefRow(
-                Icons.warning_amber_outlined,
-                'Aléas rencontrés',
-                debrief.aleasRencontres!),
-          // Travaux
-          if (debrief.travauxStatut != null)
-            _buildDebriefRow(
-                Icons.build_outlined,
-                'Travaux',
-                debrief.travauxStatut!),
-          // Commentaires
-          if (debrief.commentaires != null &&
-              debrief.commentaires!.isNotEmpty)
-            _buildDebriefRow(
-                Icons.chat_bubble_outline,
-                'Commentaires',
-                debrief.commentaires!),
-          // Champs spécifiques restants
-          if (debrief.champsSpecifiques != null)
-            ...debrief.champsSpecifiques!.entries
-                .where((e) =>
-                    e.key != 'aleas_rencontres' &&
-                    e.key != 'travaux_statut' &&
-                    e.value.toString().isNotEmpty)
-                .map((e) => _buildDebriefRow(
-                      Icons.info_outline,
-                      e.key.replaceAll('_', ' '),
-                      e.value.toString(),
-                    )),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDebriefRow(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 13, color: Colors.grey[500]),
-          const SizedBox(width: 6),
-          Text('$label : ',
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey[600])),
-          Expanded(
-            child: Text(value,
-                style: const TextStyle(fontSize: 11, color: Colors.black87)),
-          ),
-        ],
-      ),
     );
   }
 }

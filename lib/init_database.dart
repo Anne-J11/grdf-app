@@ -50,6 +50,7 @@ class InitDatabase {
       {'id': 'dole', 'nom': 'Dole', 'agence_id': 'ai_comtoise'},
       {'id': 'perrigny', 'nom': 'Perrigny', 'agence_id': 'ai_comtoise'},
       {'id': 'st_claude', 'nom': 'St Claude', 'agence_id': 'ai_comtoise'},
+      {'id': 'pontarlier', 'nom': 'Pontarlier', 'agence_id': 'ai_comtoise'},
 
       // AI BOURGOGNE NORD
       {'id': 'longvic', 'nom': 'Longvic', 'agence_id': 'ai_bourgogne_nord'},

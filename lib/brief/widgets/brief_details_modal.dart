@@ -1,15 +1,11 @@
 // lib/brief/widgets/brief_details_modal.dart
-
 import 'package:flutter/material.dart';
 import '../models/brief_model.dart';
 
 class BriefDetailsModal extends StatelessWidget {
   final BriefModel brief;
 
-  const BriefDetailsModal({
-    super.key,
-    required this.brief,
-  });
+  const BriefDetailsModal({super.key, required this.brief});
 
   static void show(BuildContext context, BriefModel brief) {
     showModalBottomSheet(
@@ -22,66 +18,105 @@ class BriefDetailsModal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subtitleColor = isDark ? Colors.grey[400]! : Colors.grey[500]!;
+    final dividerColor = isDark ? Colors.grey[800]! : Colors.grey[200]!;
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.85,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
         children: [
-          _buildHandle(),
+          _buildHandle(isDark),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildHeader(),
+                  _buildHeader(textColor, subtitleColor),
                   const SizedBox(height: 24),
 
-                  // Section : Informations principales
                   _buildSectionTitle('Informations générales'),
                   const SizedBox(height: 12),
-                  _buildDetailItem('Chef d\'équipe', brief.referentNom, Icons.person_outline),
-                  // ✅ AJOUT : Type d'intervention
+                  _buildDetailItem('Chef d\'équipe', brief.referentNom,
+                      Icons.person_outline, textColor, subtitleColor),
+                  if (brief.typeInterventionNom != null)
+                    _buildDetailItem(
+                        'Type d\'intervention',
+                        brief.typeInterventionNom!,
+                        Icons.category_outlined,
+                        textColor,
+                        subtitleColor),
                   _buildDetailItem(
-                    'Type d\'intervention',
-                    brief.typeInterventionNom ?? 'Non spécifié',
-                    Icons.category_outlined,
-                  ),
-                  _buildDetailItem('Date d\'intervention',
+                      'Date d\'intervention',
                       '${brief.dateIntervention.day.toString().padLeft(2, '0')}/${brief.dateIntervention.month.toString().padLeft(2, '0')}/${brief.dateIntervention.year}',
-                      Icons.calendar_today_outlined),
+                      Icons.calendar_today_outlined,
+                      textColor,
+                      subtitleColor),
 
-                  const Divider(height: 32),
-
-                  // Section : Préparation
-                  _buildSectionTitle('Préparation et consignes'),
+                  Divider(color: dividerColor, height: 32),
+                  _buildSectionTitle('Détails de l\'intervention'),
                   const SizedBox(height: 12),
-                  _buildDetailItem('Vérification des risques', brief.risques, Icons.warning_amber_rounded),
-                  _buildDetailItem('État du matériel', brief.materiel, Icons.build_circle_outlined),
-                  _buildDetailItem('Consignes du jour', brief.consignes, Icons.assignment_outlined),
 
-                  if (brief.commentaires != null && brief.commentaires!.isNotEmpty) ...[
-                    _buildDetailItem('Commentaires', brief.commentaires!, Icons.chat_bubble_outline),
-                  ],
+                  if (brief.risques.isNotEmpty)
+                    _buildDetailItem('Analyse des risques', brief.risques,
+                        Icons.warning_amber_outlined, textColor, subtitleColor),
+                  if (brief.materiel.isNotEmpty)
+                    _buildDetailItem('État du matériel', brief.materiel,
+                        Icons.build_outlined, textColor, subtitleColor),
+                  if (brief.consignes.isNotEmpty)
+                    _buildDetailItem('Consigne du jour', brief.consignes,
+                        Icons.checklist_outlined, textColor, subtitleColor),
+                  if (brief.commentaires != null &&
+                      brief.commentaires!.isNotEmpty)
+                    _buildDetailItem('Commentaires', brief.commentaires!,
+                        Icons.comment_outlined, textColor, subtitleColor),
 
-                  // Section : Champs spécifiques (si présents)
-                  if (brief.champsSpecifiques != null && brief.champsSpecifiques!.isNotEmpty) ...[
-                    const Divider(height: 32),
-                    _buildSectionTitle('Informations spécifiques'),
+                  // Champs dynamiques
+                  if (brief.champsSpecifiques != null &&
+                      brief.champsSpecifiques!.isNotEmpty) ...[
+                    Divider(color: dividerColor, height: 32),
+                    _buildSectionTitle('Champs spécifiques'),
                     const SizedBox(height: 12),
-                    ...brief.champsSpecifiques!.entries.map((entry) {
-                      return _buildDetailItem(
-                        _formatFieldName(entry.key),
-                        entry.value.toString(),
-                        Icons.info_outline,
-                      );
-                    }).toList(),
+                    ...brief.champsSpecifiques!.entries
+                        .where((e) =>
+                    !['signature_referent', 'signature_technicien']
+                        .contains(e.key))
+                        .map((entry) => _buildDetailItem(
+                      _formatFieldName(entry.key),
+                      entry.value?.toString() ?? '—',
+                      Icons.info_outline,
+                      textColor,
+                      subtitleColor,
+                    )),
                   ],
 
-                  const SizedBox(height: 20),
+                  // Signatures (noms)
+                  if (brief.champsSpecifiques?['signature_referent'] != null ||
+                      brief.champsSpecifiques?['signature_technicien'] != null) ...[
+                    Divider(color: dividerColor, height: 32),
+                    _buildSectionTitle('Signatures'),
+                    const SizedBox(height: 12),
+                    if (brief.champsSpecifiques?['signature_referent'] != null)
+                      _buildSignatureItem(
+                          'Référent',
+                          brief.champsSpecifiques!['signature_referent'],
+                          isDark),
+                    if (brief.champsSpecifiques?['signature_technicien'] != null)
+                      _buildSignatureItem(
+                          'Technicien',
+                          brief.champsSpecifiques!['signature_technicien'],
+                          isDark),
+                  ],
+
+                  const SizedBox(height: 16),
+                  _buildStatusBadge(),
                 ],
               ),
             ),
@@ -91,19 +126,23 @@ class BriefDetailsModal extends StatelessWidget {
     );
   }
 
-  Widget _buildHandle() {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 12),
-      width: 40,
-      height: 4,
-      decoration: BoxDecoration(
-        color: Colors.grey[300],
-        borderRadius: BorderRadius.circular(2),
+  Widget _buildHandle(bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Center(
+        child: Container(
+          width: 40,
+          height: 4,
+          decoration: BoxDecoration(
+            color: isDark ? Colors.grey[600] : Colors.grey[300],
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(Color textColor, Color subtitleColor) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -111,17 +150,15 @@ class BriefDetailsModal extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Brief ${brief.numBt}',
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF33A1C9),
-              ),
+              'BT ${brief.numBt}',
+              style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: textColor),
             ),
-            const SizedBox(height: 4),
             Text(
-              'ID: ${brief.id?.substring(0, 8) ?? 'N/A'}',
-              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+              'Créé le ${brief.dateCreation.day.toString().padLeft(2, '0')}/${brief.dateCreation.month.toString().padLeft(2, '0')}/${brief.dateCreation.year}',
+              style: TextStyle(fontSize: 12, color: subtitleColor),
             ),
           ],
         ),
@@ -142,7 +179,8 @@ class BriefDetailsModal extends StatelessWidget {
     );
   }
 
-  Widget _buildDetailItem(String label, String value, IconData icon) {
+  Widget _buildDetailItem(String label, String value, IconData icon,
+      Color textColor, Color subtitleColor) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
@@ -161,23 +199,15 @@ class BriefDetailsModal extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey[500],
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                Text(label,
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: subtitleColor,
+                        fontWeight: FontWeight.w600)),
                 const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Colors.black87,
-                    height: 1.4,
-                  ),
-                ),
+                Text(value,
+                    style: TextStyle(
+                        fontSize: 14, color: textColor, height: 1.4)),
               ],
             ),
           ),
@@ -186,10 +216,50 @@ class BriefDetailsModal extends StatelessWidget {
     );
   }
 
+  Widget _buildSignatureItem(String role, String valeur, bool isDark) {
+    final bgColor = isDark ? const Color(0xFF2C2C2C) : Colors.grey[50]!;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subtitleColor = isDark ? Colors.grey[400]! : Colors.grey[500]!;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.green.withOpacity(0.4)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.verified_user_outlined,
+                size: 16, color: Colors.green[600]),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(role,
+                    style:
+                    TextStyle(fontSize: 10, color: subtitleColor)),
+                Text(valeur,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: textColor)),
+              ],
+            ),
+            const Spacer(),
+            Text('Signé',
+                style: TextStyle(fontSize: 11, color: Colors.green[600])),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildStatusBadge() {
     Color color;
     String label;
-
     switch (brief.statut.toLowerCase()) {
       case 'envoye':
         color = Colors.orange;
@@ -207,7 +277,6 @@ class BriefDetailsModal extends StatelessWidget {
         color = Colors.grey;
         label = brief.statut;
     }
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
@@ -215,25 +284,18 @@ class BriefDetailsModal extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: color.withOpacity(0.3)),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
+      child: Text(label,
+          style: TextStyle(
+              color: color, fontSize: 12, fontWeight: FontWeight.bold)),
     );
   }
 
-  /// Formate le nom du champ : "lieu_chantier" → "Lieu Chantier"
   String _formatFieldName(String fieldName) {
     return fieldName
         .replaceAll('_', ' ')
         .split(' ')
-        .map((word) => word.isEmpty
-        ? ''
-        : word[0].toUpperCase() + word.substring(1))
+        .map((word) =>
+    word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1))
         .join(' ');
   }
 }

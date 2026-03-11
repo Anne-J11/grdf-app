@@ -1,8 +1,4 @@
 // lib/debrief/screens/debrief_view_screen.dart
-// Fichier créé (était vide).
-// Sélecteur d'agence (agence de l'utilisateur par défaut, modifiable).
-// Tap sur une carte → bottom sheet de détail (style identique à brief_details_modal).
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../auth/providers/user_provider.dart';
@@ -38,12 +34,16 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
 
   Future<void> _loadAgences() async {
     try {
-      final agences = await _firestoreService.getAgences();
       final user = context.read<UserProvider>();
+      if (user.isTechnicien) {
+        setState(() => _agenceSelectionneeId = user.agenceId);
+        return;
+      }
+      final agences = await _firestoreService.getAgences();
       setState(() {
         _agences = agences;
         _agenceSelectionneeId =
-            user.agenceId.isNotEmpty ? user.agenceId : null;
+        user.agenceId.isNotEmpty ? user.agenceId : null;
       });
     } catch (e) {
       debugPrint('Erreur chargement agences : $e');
@@ -53,11 +53,17 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
   Future<void> _loadDebriefs() async {
     setState(() => _isLoading = true);
     try {
+      final user = context.read<UserProvider>();
       List<DebriefModel> debriefs = [];
-      if (_agenceSelectionneeId != null) {
+
+      if (user.isTechnicien) {
+        // Technicien : uniquement ses propres débriefs
+        debriefs = await _debriefService.getDebriefsByReferent(user.uid);
+      } else if (_agenceSelectionneeId != null) {
         debriefs =
-            await _debriefService.getDebriefsByAgence(_agenceSelectionneeId!);
+        await _debriefService.getDebriefsByAgence(_agenceSelectionneeId!);
       }
+
       setState(() {
         _debriefs = debriefs;
         _isLoading = false;
@@ -65,7 +71,8 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Erreur: $e'), backgroundColor: Colors.red),
         );
       }
       setState(() => _isLoading = false);
@@ -74,8 +81,12 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8F9FA);
+    final user = context.watch<UserProvider>();
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: bgColor,
       appBar: AppBar(
         backgroundColor: const Color(0xFF33A1C9),
         title: const Text('Liste des Débriefs',
@@ -90,21 +101,26 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
       ),
       body: Column(
         children: [
-          _buildAgenceSelector(),
-          Expanded(child: _buildBody()),
+          if (!user.isTechnicien) _buildAgenceSelector(isDark),
+          Expanded(child: _buildBody(isDark)),
         ],
       ),
     );
   }
 
-  Widget _buildAgenceSelector() {
+  Widget _buildAgenceSelector(bool isDark) {
     if (_agences.isEmpty) return const SizedBox.shrink();
+    final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+
     return Container(
-      color: Colors.white,
+      color: bgColor,
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
       child: Row(
         children: [
-          Icon(Icons.business_outlined, size: 16, color: Colors.grey[600]),
+          Icon(Icons.business_outlined,
+              size: 16,
+              color: isDark ? Colors.grey[400] : Colors.grey[600]),
           const SizedBox(width: 8),
           Expanded(
             child: DropdownButtonHideUnderline(
@@ -112,12 +128,14 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
                 value: _agenceSelectionneeId,
                 isExpanded: true,
                 isDense: true,
-                style: const TextStyle(fontSize: 13, color: Colors.black87),
+                dropdownColor: bgColor,
+                style: TextStyle(fontSize: 13, color: textColor),
                 items: _agences
                     .map((a) => DropdownMenuItem<String?>(
-                          value: a.id,
-                          child: Text(a.nom),
-                        ))
+                  value: a.id,
+                  child: Text(a.nom,
+                      style: TextStyle(color: textColor)),
+                ))
                     .toList(),
                 onChanged: (val) {
                   setState(() => _agenceSelectionneeId = val);
@@ -131,7 +149,7 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody(bool isDark) {
     if (_isLoading) {
       return const Center(
           child: CircularProgressIndicator(color: Color(0xFF33A1C9)));
@@ -141,10 +159,14 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.assignment_outlined, size: 80, color: Colors.grey[300]),
+            Icon(Icons.assignment_outlined,
+                size: 80,
+                color: isDark ? Colors.grey[700] : Colors.grey[300]),
             const SizedBox(height: 16),
             Text('Aucun débrief trouvé',
-                style: TextStyle(fontSize: 18, color: Colors.grey[600])),
+                style: TextStyle(
+                    fontSize: 18,
+                    color: isDark ? Colors.grey[500] : Colors.grey[600])),
           ],
         ),
       );
@@ -154,213 +176,84 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: _debriefs.length,
-        itemBuilder: (context, index) =>
-            _buildDebriefCard(_debriefs[index]),
+        itemBuilder: (context, index) => _buildDebriefCard(_debriefs[index], isDark),
       ),
     );
   }
 
-  Widget _buildDebriefCard(DebriefModel debrief) {
+  Widget _buildDebriefCard(DebriefModel debrief, bool isDark) {
+    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subtitleColor = isDark ? Colors.grey[400]! : Colors.grey[600]!;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(
-        onTap: () => _showDetails(debrief),
+      elevation: isDark ? 0 : 1,
+      color: cardColor,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF33A1C9).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text('BT ${debrief.numBt}',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF33A1C9),
-                              fontSize: 13)),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(
-                            color: Colors.green.withOpacity(0.3)),
-                      ),
-                      child: const Text('Terminé',
-                          style: TextStyle(
-                              color: Colors.green,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold)),
-                    ),
-                  ]),
-                  Text(
-                    '${debrief.dateIntervention.day.toString().padLeft(2, '0')}/${debrief.dateIntervention.month.toString().padLeft(2, '0')}/${debrief.dateIntervention.year}',
-                    style:
-                        TextStyle(color: Colors.grey[600], fontSize: 12),
-                  ),
-                ],
-              ),
-              if (debrief.aleasRencontres != null &&
-                  debrief.aleasRencontres!.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Row(children: [
-                  Icon(Icons.warning_amber_outlined,
-                      size: 14, color: Colors.orange[700]),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(debrief.aleasRencontres!,
-                        style: TextStyle(
-                            color: Colors.grey[700], fontSize: 12),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
-                  ),
-                ]),
-              ],
-              if (debrief.travauxStatut != null) ...[
-                const SizedBox(height: 4),
-                Row(children: [
-                  Icon(Icons.build_outlined,
-                      size: 14, color: Colors.grey[600]),
-                  const SizedBox(width: 4),
-                  Text('Travaux : ${debrief.travauxStatut}',
-                      style: TextStyle(
-                          color: Colors.grey[700], fontSize: 12)),
-                ]),
-              ],
-            ],
-          ),
-        ),
+        side: isDark
+            ? BorderSide(color: Colors.grey[800]!, width: 1)
+            : BorderSide.none,
       ),
-    );
-  }
-
-  void _showDetails(DebriefModel debrief) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.85,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2)),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Débrief BT ${debrief.numBt}',
-                        style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF33A1C9))),
-                    const SizedBox(height: 4),
-                    Text(
-                        'Créé le ${debrief.dateCreation.day.toString().padLeft(2, '0')}/${debrief.dateCreation.month.toString().padLeft(2, '0')}/${debrief.dateCreation.year}',
-                        style:
-                            TextStyle(fontSize: 12, color: Colors.grey[500])),
-                    const Divider(height: 32),
-                    _buildDetailItem(
-                        "Date d'intervention",
-                        '${debrief.dateIntervention.day.toString().padLeft(2, '0')}/${debrief.dateIntervention.month.toString().padLeft(2, '0')}/${debrief.dateIntervention.year}',
-                        Icons.calendar_today_outlined),
-                    if (debrief.aleasRencontres != null &&
-                        debrief.aleasRencontres!.isNotEmpty)
-                      _buildDetailItem('Aléas rencontrés',
-                          debrief.aleasRencontres!, Icons.warning_amber_outlined),
-                    if (debrief.travauxStatut != null)
-                      _buildDetailItem('Statut travaux',
-                          debrief.travauxStatut!, Icons.build_circle_outlined),
-                    if (debrief.commentaires != null &&
-                        debrief.commentaires!.isNotEmpty)
-                      _buildDetailItem('Commentaires',
-                          debrief.commentaires!, Icons.chat_bubble_outline),
-                    if (debrief.champsSpecifiques != null) ...[
-                      const Divider(height: 32),
-                      const Text('INFORMATIONS SPÉCIFIQUES',
-                          style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF33A1C9),
-                              letterSpacing: 1.1)),
-                      const SizedBox(height: 12),
-                      ...debrief.champsSpecifiques!.entries
-                          .where((e) =>
-                              e.key != 'aleas_rencontres' &&
-                              e.key != 'travaux_statut')
-                          .map((e) => _buildDetailItem(
-                              e.key.replaceAll('_', ' '),
-                              e.value.toString(),
-                              Icons.info_outline)),
-                    ],
-                  ],
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF33A1C9).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text('BT ${debrief.numBt}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF33A1C9),
+                          fontSize: 13)),
                 ),
-              ),
+                Container(
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text('Terminé',
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.green[700],
+                          fontWeight: FontWeight.w600)),
+                ),
+              ],
             ),
+            const SizedBox(height: 8),
+            Row(children: [
+              Icon(Icons.calendar_today_outlined,
+                  size: 13, color: subtitleColor),
+              const SizedBox(width: 4),
+              Text(
+                '${debrief.dateIntervention.day.toString().padLeft(2, '0')}/${debrief.dateIntervention.month.toString().padLeft(2, '0')}/${debrief.dateIntervention.year}',
+                style: TextStyle(fontSize: 12, color: subtitleColor),
+              ),
+            ]),
+            if (debrief.commentaires != null &&
+                debrief.commentaires!.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                debrief.commentaires!,
+                style: TextStyle(fontSize: 12, color: textColor),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildDetailItem(String label, String value, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF33A1C9).withOpacity(0.05),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, size: 18, color: const Color(0xFF33A1C9)),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey[500],
-                        fontWeight: FontWeight.w600)),
-                const SizedBox(height: 2),
-                Text(value,
-                    style: const TextStyle(
-                        fontSize: 14, color: Colors.black87, height: 1.4)),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

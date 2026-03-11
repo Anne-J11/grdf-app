@@ -1,5 +1,4 @@
 // lib/auth/screens/registration_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:grdf_app/auth/screens/login_screen.dart';
 import 'package:grdf_app/home/screens/home_screen.dart';
@@ -9,7 +8,6 @@ import 'package:grdf_app/auth/providers/user_provider.dart';
 import 'package:grdf_app/firestore_service.dart';
 import 'package:grdf_app/auth/models/agence_model.dart';
 import 'package:grdf_app/auth/models/site_model.dart';
-import '../component/custom_button.dart';
 
 class RegistrationScreen extends StatefulWidget {
   const RegistrationScreen({super.key});
@@ -19,30 +17,27 @@ class RegistrationScreen extends StatefulWidget {
 }
 
 class _RegistrationScreenState extends State<RegistrationScreen> {
-  // Services
   final AuthService _authService = AuthService();
   final FirestoreService _firestoreService = FirestoreService();
 
-  // Controllers
-  final TextEditingController _nomController = TextEditingController();
-  final TextEditingController _prenomController = TextEditingController();
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
+  final _nomController = TextEditingController();
+  final _prenomController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
 
-  // Sélections
   String? selectedRole;
   String? selectedAgenceId;
   String? selectedSiteId;
 
-  // Listes
   final List<String> roles = ['referent', 'technicien', 'manager'];
   List<AgenceModel> agences = [];
   List<SiteModel> sites = [];
 
-  // États de chargement
   bool isLoading = false;
   bool isLoadingAgences = true;
+  bool _obscurePassword = true;
+  bool _obscureConfirm = true;
 
   @override
   void initState() {
@@ -60,7 +55,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     super.dispose();
   }
 
-  // Charger les agences
   Future<void> _loadAgences() async {
     try {
       final loadedAgences = await _firestoreService.getAgences();
@@ -70,13 +64,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       });
     } catch (e) {
       _showError('Erreur lors du chargement des agences');
-      setState(() {
-        isLoadingAgences = false;
-      });
+      setState(() => isLoadingAgences = false);
     }
   }
 
-  // Charger les sites d'une agence
   Future<void> _loadSites(String agenceId) async {
     try {
       final loadedSites = await _firestoreService.getSitesByAgence(agenceId);
@@ -89,9 +80,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     }
   }
 
-  // Fonction d'inscription
   Future<void> _register() async {
-    // Validation
     if (_nomController.text.trim().isEmpty ||
         _prenomController.text.trim().isEmpty ||
         _emailController.text.trim().isEmpty ||
@@ -102,21 +91,16 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       _showError('Veuillez remplir tous les champs');
       return;
     }
-
     if (_passwordController.text != _confirmPasswordController.text) {
       _showError('Les mots de passe ne correspondent pas');
       return;
     }
-
     if (_passwordController.text.length < 6) {
       _showError('Le mot de passe doit contenir au moins 6 caractères');
       return;
     }
 
-    setState(() {
-      isLoading = true;
-    });
-
+    setState(() => isLoading = true);
     try {
       final registeredUser = await _authService.register(
         email: _emailController.text.trim(),
@@ -127,50 +111,51 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         agenceId: selectedAgenceId!,
         siteId: selectedSiteId!,
       );
-
       if (mounted) {
-        // Stocker l'utilisateur dans le Provider global
         context.read<UserProvider>().setUser(registeredUser);
-
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Inscription réussie ! ✅'),
-            backgroundColor: Colors.green,
-          ),
+              content: Text('Inscription réussie !'),
+              backgroundColor: Colors.green),
         );
-
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
         );
       }
     } catch (e) {
-      _showError(e.toString());
+      _showError(e.toString().replaceAll('Exception: ', ''));
     } finally {
-      setState(() {
-        isLoading = false;
-      });
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-      ),
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF0F2F5);
+    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final primaryColor = isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
+    final labelColor = isDark ? Colors.grey[400]! : Colors.grey[600]!;
+    final borderColor = isDark ? Colors.grey[600]! : Colors.grey[400]!;
+    final inputFillColor = isDark ? const Color(0xFF2C2C2C) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final dropdownTextColor = isDark ? Colors.white : Colors.black87;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F2F5),
+      backgroundColor: bgColor,
       appBar: AppBar(
         title: const Text('Inscription', style: TextStyle(color: Colors.white)),
         backgroundColor: const Color(0xFF33A1C9),
         centerTitle: true,
         elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: SingleChildScrollView(
         child: Padding(
@@ -178,161 +163,245 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Veuillez vous inscrire',
                 style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF33A1C9),
-                ),
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: primaryColor),
               ),
               Container(
-                margin: const EdgeInsets.only(top: 2),
-                height: 4,
-                width: 70,
-                color: Colors.orange,
-              ),
+                  margin: const EdgeInsets.only(top: 2),
+                  height: 4,
+                  width: 70,
+                  color: Colors.orange),
               const SizedBox(height: 30),
+
+              // ── Carte formulaire ─────────────────────────────────────
               Container(
                 padding: const EdgeInsets.all(25),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: cardColor,
                   borderRadius: BorderRadius.circular(15),
                   border: Border.all(
-                      color: const Color(0xFF33A1C9).withOpacity(0.5),
-                      width: 1),
+                      color: primaryColor.withOpacity(0.5), width: 1),
+                  boxShadow: isDark
+                      ? []
+                      : [
+                    BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4))
+                  ],
                 ),
                 child: Column(
                   children: [
-                    Image.asset(
-                      'assets/img/logo.png',
-                      height: 50,
-                      errorBuilder: (context, error, stackTrace) =>
-                      const Icon(Icons.image, size: 50),
-                    ),
+                    Image.asset('assets/img/logo.png',
+                        height: 50,
+                        errorBuilder: (_, __, ___) => Icon(Icons.image,
+                            size: 50, color: Colors.grey[400])),
                     const SizedBox(height: 20),
 
-                    _buildLabel('Nom *'),
+                    _buildLabel('Nom *', labelColor),
                     _buildTextField(
-                      controller: _nomController,
-                      hintText: 'Entrez votre nom',
-                    ),
+                        controller: _nomController,
+                        hint: 'Entrez votre nom',
+                        fillColor: inputFillColor,
+                        borderColor: borderColor,
+                        textColor: textColor,
+                        primaryColor: primaryColor),
                     const SizedBox(height: 15),
 
-                    _buildLabel('Prénom *'),
+                    _buildLabel('Prénom *', labelColor),
                     _buildTextField(
-                      controller: _prenomController,
-                      hintText: 'Entrez votre prénom',
-                    ),
+                        controller: _prenomController,
+                        hint: 'Entrez votre prénom',
+                        fillColor: inputFillColor,
+                        borderColor: borderColor,
+                        textColor: textColor,
+                        primaryColor: primaryColor),
                     const SizedBox(height: 15),
 
-                    _buildLabel('Email *'),
+                    _buildLabel('Email *', labelColor),
                     _buildTextField(
-                      controller: _emailController,
-                      hintText: 'exemple@mail.com',
-                      keyboardType: TextInputType.emailAddress,
-                    ),
+                        controller: _emailController,
+                        hint: 'exemple@mail.com',
+                        keyboardType: TextInputType.emailAddress,
+                        fillColor: inputFillColor,
+                        borderColor: borderColor,
+                        textColor: textColor,
+                        primaryColor: primaryColor),
                     const SizedBox(height: 15),
 
-                    _buildLabel('Rôle *'),
-                    DropdownButtonFormField<String>(
+                    // Rôle
+                    _buildLabel('Rôle *', labelColor),
+                    _buildDropdown<String>(
                       value: selectedRole,
-                      hint: const Text('Sélectionnez un rôle'),
-                      decoration: _dropdownDecoration(),
-                      items: roles.map((role) {
-                        return DropdownMenuItem(
-                          value: role,
-                          child: Text(role == 'referent' ? 'Référent' : role == 'manager' ? 'Manager' : 'Technicien'),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          selectedRole = value;
-                        });
-                      },
+                      hint: 'Sélectionnez un rôle',
+                      items: roles
+                          .map((r) => DropdownMenuItem(
+                        value: r,
+                        child: Text(
+                          r == 'referent'
+                              ? 'Référent'
+                              : r == 'manager'
+                              ? 'Manager'
+                              : 'Technicien',
+                          style: TextStyle(color: dropdownTextColor),
+                        ),
+                      ))
+                          .toList(),
+                      onChanged: (val) => setState(() => selectedRole = val),
+                      fillColor: inputFillColor,
+                      borderColor: borderColor,
+                      textColor: dropdownTextColor,
+                      primaryColor: primaryColor,
                     ),
                     const SizedBox(height: 15),
 
-                    _buildLabel('Agence *'),
+                    // Agence
+                    _buildLabel('Agence *', labelColor),
                     isLoadingAgences
-                        ? const Center(child: CircularProgressIndicator())
-                        : DropdownButtonFormField<String>(
+                        ? Center(
+                        child: CircularProgressIndicator(
+                            color: primaryColor))
+                        : _buildDropdown<String>(
                       value: selectedAgenceId,
-                      hint: const Text('Sélectionnez une agence'),
-                      decoration: _dropdownDecoration(),
-                      items: agences.map((agence) {
-                        return DropdownMenuItem(
-                          value: agence.id,
-                          child: Text(agence.nom),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
+                      hint: 'Sélectionnez une agence',
+                      items: agences
+                          .map((a) => DropdownMenuItem(
+                        value: a.id,
+                        child: Text(a.nom,
+                            style: TextStyle(
+                                color: dropdownTextColor)),
+                      ))
+                          .toList(),
+                      onChanged: (val) {
                         setState(() {
-                          selectedAgenceId = value;
-                          if (value != null) {
-                            _loadSites(value);
-                          }
+                          selectedAgenceId = val;
+                          sites = [];
+                          selectedSiteId = null;
                         });
+                        if (val != null) _loadSites(val);
                       },
+                      fillColor: inputFillColor,
+                      borderColor: borderColor,
+                      textColor: dropdownTextColor,
+                      primaryColor: primaryColor,
                     ),
                     const SizedBox(height: 15),
 
-                    _buildLabel('Site *'),
-                    DropdownButtonFormField<String>(
+                    // Site
+                    _buildLabel('Site *', labelColor),
+                    _buildDropdown<String>(
                       value: selectedSiteId,
-                      hint: Text(
-                        selectedAgenceId == null
-                            ? 'Choisir d\'abord une agence'
-                            : 'Sélectionnez un site',
-                      ),
-                      decoration: _dropdownDecoration(),
-                      items: sites.map((site) {
-                        return DropdownMenuItem(
-                          value: site.id,
-                          child: Text(site.nom),
-                        );
-                      }).toList(),
+                      hint: selectedAgenceId == null
+                          ? 'Choisir d\'abord une agence'
+                          : sites.isEmpty
+                          ? 'Chargement...'
+                          : 'Sélectionnez un site',
+                      items: sites
+                          .map((s) => DropdownMenuItem(
+                        value: s.id,
+                        child: Text(s.nom,
+                            style:
+                            TextStyle(color: dropdownTextColor)),
+                      ))
+                          .toList(),
                       onChanged: selectedAgenceId == null
                           ? null
-                          : (value) {
-                        setState(() {
-                          selectedSiteId = value;
-                        });
-                      },
+                          : (val) => setState(() => selectedSiteId = val),
+                      fillColor: inputFillColor,
+                      borderColor: borderColor,
+                      textColor: dropdownTextColor,
+                      primaryColor: primaryColor,
                     ),
                     const SizedBox(height: 15),
 
-                    _buildLabel('Mot de passe *'),
+                    // Mot de passe
+                    _buildLabel('Mot de passe *', labelColor),
                     _buildTextField(
                       controller: _passwordController,
-                      obscureText: true,
-                      hintText: 'Minimum 6 caractères',
+                      hint: 'Minimum 6 caractères',
+                      obscureText: _obscurePassword,
+                      fillColor: inputFillColor,
+                      borderColor: borderColor,
+                      textColor: textColor,
+                      primaryColor: primaryColor,
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            color: labelColor,
+                            size: 20),
+                        onPressed: () =>
+                            setState(() => _obscurePassword = !_obscurePassword),
+                      ),
                     ),
                     const SizedBox(height: 15),
 
-                    _buildLabel('Confirmer le mot de passe *'),
+                    // Confirmer mot de passe
+                    _buildLabel('Confirmer le mot de passe *', labelColor),
                     _buildTextField(
                       controller: _confirmPasswordController,
-                      obscureText: true,
-                      hintText: 'Retapez votre mot de passe',
+                      hint: 'Retapez votre mot de passe',
+                      obscureText: _obscureConfirm,
+                      fillColor: inputFillColor,
+                      borderColor: borderColor,
+                      textColor: textColor,
+                      primaryColor: primaryColor,
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                            _obscureConfirm
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            color: labelColor,
+                            size: 20),
+                        onPressed: () =>
+                            setState(() => _obscureConfirm = !_obscureConfirm),
+                      ),
                     ),
                     const SizedBox(height: 30),
 
-                    if (isLoading)
-                      const CircularProgressIndicator()
-                    else
-                      CustomButton(
-                        elevatedButtonText: 'S\'inscrire',
-                        textButtonText: 'Déjà un compte? Se connecter',
-                        elevatedButtonClicked: _register,
-                        textButtonClicked: () {
-                          Navigator.push(
+                    // Boutons
+                    isLoading
+                        ? CircularProgressIndicator(color: primaryColor)
+                        : Column(
+                      children: [
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: _register,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryColor,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius:
+                                  BorderRadius.circular(12)),
+                              elevation: 0,
+                            ),
+                            child: const Text("S'inscrire",
+                                style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextButton(
+                          onPressed: () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                                builder: (context) => const LoginScreen()),
-                          );
-                        },
-                      ),
+                                builder: (_) => const LoginScreen()),
+                          ),
+                          child: Text('Déjà un compte ? Se connecter',
+                              style: TextStyle(
+                                  color: primaryColor, fontSize: 13)),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -344,46 +413,85 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     );
   }
 
-  Widget _buildLabel(String text) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 8.0),
-        child: Text(text,
-            style: const TextStyle(color: Colors.grey, fontSize: 14)),
-      ),
-    );
-  }
+  Widget _buildLabel(String text, Color color) => Align(
+    alignment: Alignment.centerLeft,
+    child: Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Text(text,
+          style: TextStyle(
+              color: color, fontSize: 14, fontWeight: FontWeight.w500)),
+    ),
+  );
 
   Widget _buildTextField({
+    required TextEditingController controller,
+    required String hint,
+    required Color fillColor,
+    required Color borderColor,
+    required Color textColor,
+    required Color primaryColor,
     bool obscureText = false,
-    String? hintText,
-    TextInputType? keyboardType,
-    TextEditingController? controller,
+    TextInputType keyboardType = TextInputType.text,
+    Widget? suffixIcon,
   }) {
     return TextField(
       controller: controller,
       obscureText: obscureText,
       keyboardType: keyboardType,
+      style: TextStyle(color: textColor, fontSize: 14),
       decoration: InputDecoration(
-        hintText: hintText,
-        hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
+        hintText: hint,
+        hintStyle: TextStyle(color: textColor.withOpacity(0.4), fontSize: 13),
         isDense: true,
-        border: const OutlineInputBorder(
-            borderSide: BorderSide(color: Colors.black)),
-        enabledBorder: const OutlineInputBorder(
-            borderSide: BorderSide(color: Colors.black)),
+        filled: true,
+        fillColor: fillColor,
+        suffixIcon: suffixIcon,
+        contentPadding:
+        const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: borderColor)),
+        enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: borderColor)),
+        focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: primaryColor, width: 1.5)),
       ),
     );
   }
 
-  InputDecoration _dropdownDecoration() {
-    return const InputDecoration(
-      isDense: true,
-      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      border: OutlineInputBorder(borderSide: BorderSide(color: Colors.black)),
-      enabledBorder:
-      OutlineInputBorder(borderSide: BorderSide(color: Colors.black)),
+  Widget _buildDropdown<T>({
+    required T? value,
+    required String hint,
+    required List<DropdownMenuItem<T>> items,
+    required ValueChanged<T?>? onChanged,
+    required Color fillColor,
+    required Color borderColor,
+    required Color textColor,
+    required Color primaryColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: fillColor,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: borderColor),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<T>(
+          value: value,
+          hint: Text(hint,
+              style: TextStyle(
+                  color: textColor.withOpacity(0.4), fontSize: 13)),
+          isExpanded: true,
+          isDense: true,
+          dropdownColor: fillColor,
+          style: TextStyle(color: textColor, fontSize: 14),
+          items: items,
+          onChanged: onChanged,
+        ),
+      ),
     );
   }
 }
