@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "708504279479",
+    "project_id": "grdfapp",
+    "storage_bucket": "grdfapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:708504279479:android:46bdd06918532bb6de3032",
+        "android_client_info": {
+          "package_name": "com.example.grdf_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBjVz1yRqVCl5NZS4q1pFsWiRz6a_NHBzk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

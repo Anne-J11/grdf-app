@@ -1,0 +1,37 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "grdfapp",
+          "appId": "1:708504279479:android:46bdd06918532bb6de3032",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "grdfapp",
+          "configurations": {
+            "android": "1:708504279479:android:46bdd06918532bb6de3032",
+            "web": "1:708504279479:web:3e671cf495d9ae17de3032",
+            "windows": "1:708504279479:web:ad396477c860ebbade3032"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
