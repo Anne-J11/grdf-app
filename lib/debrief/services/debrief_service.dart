@@ -8,12 +8,69 @@ class DebriefService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final BriefService _briefService = BriefService();
 
+  // ✅ NOUVELLE MÉTHODE : Récupérer les débriefs avec filtres combinés
+  Future<List<DebriefModel>> getDebriefsWithFilters({
+    String? agenceId,
+    String? siteId,
+    DateTime? dateIntervention,
+  }) async {
+    try {
+      Query query = _firestore.collection('debriefs');
+
+      // Filtre par agence
+      if (agenceId != null) {
+        query = query.where('agence_id', isEqualTo: agenceId);
+      }
+
+      // Filtre par site
+      if (siteId != null) {
+        query = query.where('site_id', isEqualTo: siteId);
+      }
+
+      // Filtre par date exacte (toute la journée)
+      if (dateIntervention != null) {
+        DateTime startOfDay = DateTime(
+          dateIntervention.year,
+          dateIntervention.month,
+          dateIntervention.day,
+        );
+        DateTime endOfDay = DateTime(
+          dateIntervention.year,
+          dateIntervention.month,
+          dateIntervention.day,
+          23,
+          59,
+          59,
+        );
+
+        query = query
+            .where('date_intervention',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+            .where('date_intervention',
+            isLessThanOrEqualTo: Timestamp.fromDate(endOfDay));
+      }
+
+      // Tri par date décroissante
+      query = query.orderBy('date_intervention', descending: true);
+
+      QuerySnapshot snapshot = await query.get();
+
+      return snapshot.docs
+          .map((doc) => DebriefModel.fromFirestore(
+        doc.data() as Map<String, dynamic>,
+        doc.id,
+      ))
+          .toList();
+    } catch (e) {
+      throw Exception('Erreur lors du chargement des débriefs: $e');
+    }
+  }
+
   // Créer un debrief ET verrouiller automatiquement le brief associé
   Future<String> createDebrief(DebriefModel debrief) async {
     try {
-      DocumentReference docRef = await _firestore
-          .collection('debriefs')
-          .add(debrief.toFirestore());
+      DocumentReference docRef =
+      await _firestore.collection('debriefs').add(debrief.toFirestore());
 
       // Verrouiller le brief associé
       if (debrief.briefId.isNotEmpty) {
@@ -29,10 +86,8 @@ class DebriefService {
   // Récupérer un debrief par ID
   Future<DebriefModel?> getDebriefById(String debriefId) async {
     try {
-      DocumentSnapshot doc = await _firestore
-          .collection('debriefs')
-          .doc(debriefId)
-          .get();
+      DocumentSnapshot doc =
+      await _firestore.collection('debriefs').doc(debriefId).get();
 
       if (!doc.exists) return null;
 
@@ -106,7 +161,8 @@ class DebriefService {
   }
 
   // Mettre à jour un debrief
-  Future<void> updateDebrief(String debriefId, Map<String, dynamic> data) async {
+  Future<void> updateDebrief(
+      String debriefId, Map<String, dynamic> data) async {
     try {
       await _firestore.collection('debriefs').doc(debriefId).update(data);
     } catch (e) {

@@ -1,8 +1,10 @@
 // lib/brief/screens/brief_view_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../auth/providers/user_provider.dart';
 import '../../auth/models/agence_model.dart';
+import '../../auth/models/site_model.dart';
 import '../../firestore_service.dart';
 import '../models/brief_model.dart';
 import '../services/brief_service.dart';
@@ -24,7 +26,14 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
 
   List<BriefModel> _briefs = [];
   List<AgenceModel> _agences = [];
+  List<SiteModel> _sites = [];
+  List<SiteModel> _sitesFiltres = [];
+
+  // Filtres
   String? _agenceSelectionneeId;
+  String? _siteSelectionneId;
+  DateTime? _dateSelectionnee; // ✅ Une seule date
+
   bool _isLoading = true;
 
   @override
@@ -32,6 +41,7 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _loadAgences();
+      await _loadSites();
       await _loadBriefs();
     });
   }
@@ -39,7 +49,6 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
   Future<void> _loadAgences() async {
     try {
       final user = context.read<UserProvider>();
-      // Technicien : ne voit que son agence, pas de sélecteur
       if (user.isTechnicien) {
         setState(() {
           _agenceSelectionneeId = user.agenceId;
@@ -57,6 +66,32 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
     }
   }
 
+  Future<void> _loadSites() async {
+    try {
+      final sites = await _firestoreService.getAllSites();
+      setState(() {
+        _sites = sites;
+        _filtrerSitesParAgence();
+      });
+    } catch (e) {
+      debugPrint('Erreur chargement sites : $e');
+    }
+  }
+
+  void _filtrerSitesParAgence() {
+    if (_agenceSelectionneeId == null) {
+      _sitesFiltres = _sites;
+    } else {
+      _sitesFiltres = _sites
+          .where((site) => site.agenceId == _agenceSelectionneeId)
+          .toList();
+    }
+    if (_siteSelectionneId != null &&
+        !_sitesFiltres.any((s) => s.id == _siteSelectionneId)) {
+      _siteSelectionneId = null;
+    }
+  }
+
   Future<void> _loadBriefs() async {
     setState(() => _isLoading = true);
     try {
@@ -64,10 +99,13 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
       List<BriefModel> briefs = [];
 
       if (user.isTechnicien) {
-        // Technicien : uniquement ses propres briefs (par referentId = son uid)
         briefs = await _briefService.getBriefsByReferent(user.uid);
-      } else if (_agenceSelectionneeId != null) {
-        briefs = await _briefService.getBriefsByAgence(_agenceSelectionneeId!);
+      } else {
+        briefs = await _briefService.getBriefsWithFilters(
+          agenceId: _agenceSelectionneeId,
+          siteId: _siteSelectionneId,
+          dateIntervention: _dateSelectionnee, // ✅ Une seule date
+        );
       }
 
       setState(() {
@@ -110,17 +148,50 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('Brief supprimé'),
-              backgroundColor: Colors.green),
+              content: Text('Brief supprimé'), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Erreur: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
         );
       }
+    }
+  }
+
+  void _resetFiltres() {
+    setState(() {
+      _siteSelectionneId = null;
+      _dateSelectionnee = null;
+    });
+    _loadBriefs();
+  }
+
+  Future<void> _selectionnerDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _dateSelectionnee ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF33A1C9),
+              onPrimary: Colors.white,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _dateSelectionnee = picked;
+      });
+      _loadBriefs();
     }
   }
 
@@ -138,6 +209,12 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
             style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
+          if (_siteSelectionneId != null || _dateSelectionnee != null)
+            IconButton(
+              icon: const Icon(Icons.filter_alt_off, color: Colors.white),
+              tooltip: 'Réinitialiser les filtres',
+              onPressed: _resetFiltres,
+            ),
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: _loadBriefs,
@@ -146,51 +223,146 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
       ),
       body: Column(
         children: [
-          // Sélecteur agence uniquement pour référents/managers
-          if (!user.isTechnicien) _buildAgenceSelector(isDark),
+          if (!user.isTechnicien) _buildFiltresBar(isDark),
           Expanded(child: _buildBody(isDark)),
         ],
       ),
     );
   }
 
-  Widget _buildAgenceSelector(bool isDark) {
-    if (_agences.isEmpty) return const SizedBox.shrink();
+  Widget _buildFiltresBar(bool isDark) {
     final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     final textColor = isDark ? Colors.white : Colors.black87;
 
     return Container(
       color: bgColor,
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-      child: Row(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.business_outlined,
-              size: 16,
-              color: isDark ? Colors.grey[400] : Colors.grey[600]),
-          const SizedBox(width: 8),
-          Expanded(
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String?>(
-                value: _agenceSelectionneeId,
-                isExpanded: true,
-                isDense: true,
-                dropdownColor: bgColor,
-                style: TextStyle(fontSize: 13, color: textColor),
-                items: _agences
-                    .map((a) => DropdownMenuItem<String?>(
-                  value: a.id,
-                  child: Text(a.nom,
-                      style: TextStyle(color: textColor)),
-                ))
-                    .toList(),
-                onChanged: (val) {
-                  setState(() => _agenceSelectionneeId = val);
-                  _loadBriefs();
-                },
+          Row(
+            children: [
+              Expanded(
+                flex: 1,
+                child: _buildAgenceDropdown(textColor, bgColor),
               ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 1,
+                child: _buildSiteDropdown(textColor, bgColor),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _buildDateFilter(textColor, bgColor),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAgenceDropdown(Color textColor, Color bgColor) {
+    if (_agences.isEmpty) return const SizedBox.shrink();
+
+    return Row(
+      children: [
+        Icon(Icons.business_outlined, size: 16, color: Colors.grey[600]),
+        const SizedBox(width: 6),
+        Expanded(
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String?>(
+              value: _agenceSelectionneeId,
+              isExpanded: true,
+              isDense: true,
+              dropdownColor: bgColor,
+              style: TextStyle(fontSize: 12, color: textColor),
+              hint: Text('Agence',
+                  style: TextStyle(fontSize: 12, color: Colors.grey)),
+              items: _agences
+                  .map((a) => DropdownMenuItem<String?>(
+                value: a.id,
+                child: Text(a.nom, style: TextStyle(color: textColor)),
+              ))
+                  .toList(),
+              onChanged: (val) {
+                setState(() {
+                  _agenceSelectionneeId = val;
+                  _filtrerSitesParAgence();
+                });
+                _loadBriefs();
+              },
             ),
           ),
-        ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSiteDropdown(Color textColor, Color bgColor) {
+    return Row(
+      children: [
+        Icon(Icons.location_on_outlined, size: 16, color: Colors.grey[600]),
+        const SizedBox(width: 6),
+        Expanded(
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String?>(
+              value: _siteSelectionneId,
+              isExpanded: true,
+              isDense: true,
+              dropdownColor: bgColor,
+              style: TextStyle(fontSize: 12, color: textColor),
+              hint: Text('Tous les sites',
+                  style: TextStyle(fontSize: 12, color: Colors.grey)),
+              items: [
+                DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('Tous les sites',
+                      style: TextStyle(color: textColor)),
+                ),
+                ..._sitesFiltres.map((s) => DropdownMenuItem<String?>(
+                  value: s.id,
+                  child: Text(s.nom, style: TextStyle(color: textColor)),
+                )),
+              ],
+              onChanged: (val) {
+                setState(() => _siteSelectionneId = val);
+                _loadBriefs();
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDateFilter(Color textColor, Color bgColor) {
+    String dateText = 'Toutes les dates';
+    if (_dateSelectionnee != null) {
+      dateText =
+      '${_dateSelectionnee!.day.toString().padLeft(2, '0')}/${_dateSelectionnee!.month.toString().padLeft(2, '0')}/${_dateSelectionnee!.year}';
+    }
+
+    return InkWell(
+      onTap: _selectionnerDate,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: bgColor,
+          border: Border.all(color: Colors.grey[300]!),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                dateText,
+                style: TextStyle(fontSize: 12, color: textColor),
+              ),
+            ),
+            Icon(Icons.arrow_drop_down, color: Colors.grey[600]),
+          ],
+        ),
       ),
     );
   }
@@ -257,7 +429,6 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Modifier
                     IconButton(
                       icon: const Icon(Icons.edit_outlined,
                           size: 18, color: Color(0xFF33A1C9)),
@@ -272,7 +443,6 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
                         _loadBriefs();
                       },
                     ),
-                    // Supprimer (référent/manager uniquement)
                     if (user.isReferent)
                       IconButton(
                         icon: const Icon(Icons.delete_outline,
@@ -280,7 +450,6 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
                         tooltip: 'Supprimer',
                         onPressed: () => _deleteBrief(brief),
                       ),
-                    // Créer débrief
                     IconButton(
                       icon: const Icon(Icons.assignment_turned_in_outlined,
                           size: 18, color: Colors.green),

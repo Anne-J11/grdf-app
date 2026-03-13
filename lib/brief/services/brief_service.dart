@@ -6,12 +6,69 @@ import '../models/brief_model.dart';
 class BriefService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  // ✅ NOUVELLE MÉTHODE : Récupérer les briefs avec filtres combinés (UNE DATE)
+  Future<List<BriefModel>> getBriefsWithFilters({
+    String? agenceId,
+    String? siteId,
+    DateTime? dateIntervention,
+  }) async {
+    try {
+      Query query = _firestore.collection('briefs');
+
+      // Filtre par agence
+      if (agenceId != null) {
+        query = query.where('agence_id', isEqualTo: agenceId);
+      }
+
+      // Filtre par site (prioritaire sur agence si les deux sont fournis)
+      if (siteId != null) {
+        query = query.where('site_id', isEqualTo: siteId);
+      }
+
+      // Filtre par date exacte (toute la journée)
+      if (dateIntervention != null) {
+        DateTime startOfDay = DateTime(
+          dateIntervention.year,
+          dateIntervention.month,
+          dateIntervention.day,
+        );
+        DateTime endOfDay = DateTime(
+          dateIntervention.year,
+          dateIntervention.month,
+          dateIntervention.day,
+          23,
+          59,
+          59,
+        );
+
+        query = query
+            .where('date_intervention',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+            .where('date_intervention',
+            isLessThanOrEqualTo: Timestamp.fromDate(endOfDay));
+      }
+
+      // Tri par date décroissante
+      query = query.orderBy('date_intervention', descending: true);
+
+      QuerySnapshot snapshot = await query.get();
+
+      return snapshot.docs
+          .map((doc) => BriefModel.fromFirestore(
+        doc.data() as Map<String, dynamic>,
+        doc.id,
+      ))
+          .toList();
+    } catch (e) {
+      throw Exception('Erreur lors du chargement des briefs: $e');
+    }
+  }
+
   // Créer un brief
   Future<String> createBrief(BriefModel brief) async {
     try {
-      DocumentReference docRef = await _firestore
-          .collection('briefs')
-          .add(brief.toFirestore());
+      DocumentReference docRef =
+      await _firestore.collection('briefs').add(brief.toFirestore());
 
       return docRef.id;
     } catch (e) {
@@ -22,10 +79,8 @@ class BriefService {
   // Récupérer un brief par ID
   Future<BriefModel?> getBriefById(String briefId) async {
     try {
-      DocumentSnapshot doc = await _firestore
-          .collection('briefs')
-          .doc(briefId)
-          .get();
+      DocumentSnapshot doc =
+      await _firestore.collection('briefs').doc(briefId).get();
 
       if (!doc.exists) return null;
 
@@ -149,16 +204,20 @@ class BriefService {
   }
 
   // Rechercher des briefs par date
-  Future<List<BriefModel>> getBriefsByDate(DateTime date, String siteId) async {
+  Future<List<BriefModel>> getBriefsByDate(
+      DateTime date, String siteId) async {
     try {
       DateTime startOfDay = DateTime(date.year, date.month, date.day);
-      DateTime endOfDay = DateTime(date.year, date.month, date.day, 23, 59, 59);
+      DateTime endOfDay =
+      DateTime(date.year, date.month, date.day, 23, 59, 59);
 
       QuerySnapshot snapshot = await _firestore
           .collection('briefs')
           .where('site_id', isEqualTo: siteId)
-          .where('date_intervention', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
-          .where('date_intervention', isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
+          .where('date_intervention',
+          isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+          .where('date_intervention',
+          isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
           .orderBy('date_intervention')
           .get();
 

@@ -9,6 +9,7 @@ import 'package:grdf_app/welcome_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:grdf_app/auth/providers/user_provider.dart';
+import '../../brief/services/brief_service.dart';
 import '../../brief/widgets/app_header.dart';
 import '../../brief/widgets/form_fields.dart';
 import '../../brief/widgets/dynamic_fields_section.dart';
@@ -162,7 +163,6 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
   }
 
   // ── Sauvegarde ────────────────────────────────────────────────────────────
-
   Future<void> _saveDebrief() async {
     if (!_formKey.currentState!.validate()) {
       _showMessage('Veuillez remplir tous les champs obligatoires', isError: true);
@@ -172,6 +172,24 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
     setState(() => _isSaving = true);
 
     try {
+      // ✅ Récupérer le siteId depuis le brief associé
+      String siteId = context.read<UserProvider>().siteId; // Fallback par défaut
+      String agenceId = widget.agenceId ?? context.read<UserProvider>().agenceId;
+
+      if (widget.briefId != null && widget.briefId!.isNotEmpty) {
+        try {
+          final briefService = BriefService();
+          final brief = await briefService.getBriefById(widget.briefId!);
+          if (brief != null) {
+            siteId = brief.siteId;
+            agenceId = brief.agenceId; // Utiliser aussi l'agenceId du brief
+          }
+        } catch (e) {
+          debugPrint('Impossible de récupérer le brief: $e');
+          // Continue avec les valeurs par défaut
+        }
+      }
+
       Map<String, dynamic> specifiques = {};
       _dynamicControllers.forEach((key, controller) {
         specifiques[key] = controller.text;
@@ -187,7 +205,8 @@ class _DebriefCreateScreenState extends State<DebriefCreateScreen> {
         numBt: widget.numBt ?? '',
         typeInterventionId: _typeDebrief?.id ?? '',
         referentId: context.read<UserProvider>().uid,
-        agenceId: widget.agenceId ?? context.read<UserProvider>().agenceId,
+        agenceId: agenceId,
+        siteId: siteId, // ✅ SiteId récupéré depuis le brief
         dateIntervention: _dateIntervention,
         commentaires: _commentairesController.text.trim(),
         champsSpecifiques: specifiques.isEmpty ? null : specifiques,

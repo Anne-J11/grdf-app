@@ -32,6 +32,9 @@ class DebriefModel {
   /// ID de l'agence — stocké pour le filtrage par agence
   final String agenceId;
 
+  /// ID du site d'intervention
+  final String siteId;
+
   // ============================================================================
   // DÉTAILS DE L'INTERVENTION RÉALISÉE
   // ============================================================================
@@ -41,6 +44,7 @@ class DebriefModel {
 
   /// Commentaires additionnels (optionnel)
   final String? commentaires;
+
 
   // ============================================================================
   // CHAMPS DYNAMIQUES ET STATUT
@@ -73,6 +77,7 @@ class DebriefModel {
     required this.referentId,
     this.technicienId,
     required this.agenceId,
+    required this.siteId,
     required this.dateIntervention,
     this.commentaires,
     this.champsSpecifiques,
@@ -98,6 +103,7 @@ class DebriefModel {
       referentId: data['referent_id'] ?? '',
       technicienId: data['technicien_id'],
       agenceId: data['agence_id'] ?? '',
+      siteId: data['site_id'] ?? '',
       dateIntervention: (data['date_intervention'] as Timestamp).toDate(),
       commentaires: data['commentaires'],
       champsSpecifiques: data['champs_specifiques'] as Map<String, dynamic>?,
@@ -123,6 +129,7 @@ class DebriefModel {
       'referent_id': referentId,
       'technicien_id': technicienId,
       'agence_id': agenceId,
+      'site_id': siteId,
       'date_intervention': Timestamp.fromDate(dateIntervention),
       'commentaires': commentaires,
       'champs_specifiques': champsSpecifiques,
@@ -164,6 +171,7 @@ class DebriefModel {
     String? referentId,
     String? technicienId,
     String? agenceId,
+    String? siteId,
     DateTime? dateIntervention,
     String? commentaires,
     Map<String, dynamic>? champsSpecifiques,
@@ -179,6 +187,7 @@ class DebriefModel {
       referentId: referentId ?? this.referentId,
       technicienId: technicienId ?? this.technicienId,
       agenceId: agenceId ?? this.agenceId,
+      siteId: siteId ?? this.siteId,
       dateIntervention: dateIntervention ?? this.dateIntervention,
       commentaires: commentaires ?? this.commentaires,
       champsSpecifiques: champsSpecifiques ?? this.champsSpecifiques,
