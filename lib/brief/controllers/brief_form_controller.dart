@@ -1,7 +1,4 @@
 // lib/brief/controllers/brief_form_controller.dart
-// Ajouts v3 :
-//   - saveBriefWithExtras() : inclut les signatures dans champsSpecifiques
-//   - autoSaveSignatures()  : met à jour les signatures en Firestore sans refaire tout le brief
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -89,26 +86,29 @@ class BriefFormController extends ChangeNotifier {
     }
   }
 
-  /// Met à jour uniquement les signatures dans Firestore
-  Future<void> autoSaveSignatures({
+  /// Met à jour les signatures et photos dans Firestore
+  Future<void> autoSaveExtras({
     required String briefId,
     String? signatureReferent,
     String? signatureTechnicien,
+    List<String>? photos,
   }) async {
     try {
       final Map<String, dynamic> update = {};
-      // On utilise une mise à jour partielle des champs spécifiques
       if (signatureReferent != null) {
         update['champs_specifiques.signature_referent'] = signatureReferent;
       }
       if (signatureTechnicien != null) {
         update['champs_specifiques.signature_technicien'] = signatureTechnicien;
       }
+      if (photos != null) {
+        update['champs_specifiques.photos'] = photos;
+      }
       if (update.isNotEmpty) {
         await _briefService.updateBrief(briefId, update);
       }
     } catch (e) {
-      dev.log('Erreur auto-save signatures : $e');
+      dev.log('Erreur auto-save extras : $e');
     }
   }
 
@@ -134,20 +134,6 @@ class BriefFormController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Sauvegarde classique (sans extras)
-  Future<bool> saveBrief({
-    required String referentId,
-    required String agenceId,
-    required String siteId,
-  }) async {
-    return saveBriefWithExtras(
-      referentId: referentId,
-      agenceId: agenceId,
-      siteId: siteId,
-    );
-  }
-
-  /// Sauvegarde avec champs extras (signatures, etc.)
   Future<bool> saveBriefWithExtras({
     required String referentId,
     required String agenceId,
@@ -166,7 +152,7 @@ class BriefFormController extends ChangeNotifier {
         champsSpecifiques[key] = controller.text;
       });
 
-      // Champs extras (signatures, etc.)
+      // Champs extras (signatures, photos, etc.)
       if (extraChamps != null) {
         champsSpecifiques.addAll(extraChamps);
       }
@@ -191,10 +177,8 @@ class BriefFormController extends ChangeNotifier {
       );
 
       if (lastSavedBriefId != null) {
-        // Mise à jour si déjà sauvegardé
         await _briefService.updateBrief(lastSavedBriefId!, brief.toFirestore());
       } else {
-        // Création
         lastSavedBriefId = await _briefService.createBrief(brief);
         _attachAutoSaveListeners();
       }

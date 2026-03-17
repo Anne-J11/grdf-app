@@ -1,8 +1,4 @@
 // lib/brief/screens/brief_create_screen.dart
-// Modifications :
-//   1. Bouton retour (AppBar flèche + bouton Accueil dans header) vers HomeScreen
-//   2. Signatures digitales référent + technicien (zone tactile)
-//   3. Signatures sauvegardées en base64 dans Firestore avec le brief
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -17,9 +13,9 @@ import '../widgets/dynamic_fields_section.dart';
 import '../widgets/form_fields.dart';
 import '../models/type_intervention_model.dart';
 import '../../auth/component/signature_widget.dart';
+import '../../auth/component/photo_selection_widget.dart';
 
 class BriefCreateScreen extends StatefulWidget {
-  /// null → mode création | fourni → mode consultation (verrouillé si estVerrouille)
   final BriefModel? briefExistant;
 
   const BriefCreateScreen({super.key, this.briefExistant});
@@ -32,9 +28,9 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
   final _formKey = GlobalKey<FormState>();
   final _controller = BriefFormController();
 
-  // Signatures base64
   String? _signatureReferent;
   String? _signatureTechnicien;
+  List<String> _photosBase64 = [];
 
   bool get _estVerrouille =>
       widget.briefExistant != null && widget.briefExistant!.estVerrouille;
@@ -58,16 +54,23 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
     _controller.consignesController.text = brief.consignes;
     _controller.commentairesController.text = brief.commentaires ?? '';
     _controller.dateIntervention = brief.dateIntervention;
-    // Charger signatures existantes
     _signatureReferent = brief.champsSpecifiques?['signature_referent'];
     _signatureTechnicien = brief.champsSpecifiques?['signature_technicien'];
+    
+    // Récupération des photos
+    if (brief.champsSpecifiques?['photos'] != null) {
+      _photosBase64 = List<String>.from(brief.champsSpecifiques!['photos']);
+    }
+
     if (brief.typeInterventionId.isNotEmpty) {
       try {
         final type = _controller.typesIntervention
             .firstWhere((t) => t.id == brief.typeInterventionId);
         _controller.onTypeChanged(type);
         brief.champsSpecifiques?.forEach((key, value) {
-          _controller.dynamicControllers[key]?.text = value.toString();
+          if (key != 'signature_referent' && key != 'signature_technicien' && key != 'photos') {
+            _controller.dynamicControllers[key]?.text = value.toString();
+          }
         });
       } catch (_) {}
     }
@@ -94,20 +97,22 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
 
     final user = context.read<UserProvider>();
 
-    // Inclure les signatures dans les champs spécifiques
-    final signaturesExtra = <String, dynamic>{};
+    final extras = <String, dynamic>{};
     if (_signatureReferent != null) {
-      signaturesExtra['signature_referent'] = _signatureReferent;
+      extras['signature_referent'] = _signatureReferent;
     }
     if (_signatureTechnicien != null) {
-      signaturesExtra['signature_technicien'] = _signatureTechnicien;
+      extras['signature_technicien'] = _signatureTechnicien;
+    }
+    if (_photosBase64.isNotEmpty) {
+      extras['photos'] = _photosBase64;
     }
 
     final success = await _controller.saveBriefWithExtras(
       referentId: user.uid,
       agenceId: user.agenceId,
       siteId: user.siteId,
-      extraChamps: signaturesExtra,
+      extraChamps: extras,
     );
 
     if (success) {
@@ -137,17 +142,19 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
+
     if (_controller.isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator(color: Color(0xFF33A1C9))),
+      return Scaffold(
+        body: Center(child: CircularProgressIndicator(color: primaryColor)),
       );
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
-      // AppBar avec flèche retour
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF33A1C9),
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : const Color(0xFF33A1C9),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           tooltip: 'Retour accueil',
@@ -166,12 +173,11 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
             key: _formKey,
             child: Column(
               children: [
-                // Header avec bouton Accueil
-                _buildHeader(),
+                _buildHeader(isDark, primaryColor),
                 const SizedBox(height: 20),
-                if (_estVerrouille) _buildBandeauVerrouillage(),
+                if (_estVerrouille) _buildBandeauVerrouillage(isDark),
                 if (_estVerrouille) const SizedBox(height: 12),
-                _buildFormContainer(),
+                _buildFormContainer(isDark, primaryColor),
               ],
             ),
           ),
@@ -180,18 +186,17 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
     );
   }
 
-  /// Header avec logo + bouton Accueil + bouton Visualisation + Déconnexion
-  Widget _buildHeader() {
+  Widget _buildHeader(bool isDark, Color primaryColor) {
     return Row(
       children: [
         Image.asset('assets/img/logo.png', height: 40,
             errorBuilder: (_, __, ___) => const SizedBox(width: 40)),
         const Spacer(),
-        _buildHeaderBtn('Accueil', Icons.home_outlined, _retourAccueil),
+        _buildHeaderBtn('Accueil', Icons.home_outlined, _retourAccueil, isDark, primaryColor),
         const SizedBox(width: 6),
         _buildHeaderBtn('Briefs', Icons.list_alt_outlined, () {
           Navigator.pushNamed(context, '/briefs');
-        }),
+        }, isDark, primaryColor),
         const SizedBox(width: 6),
         _buildHeaderBtn('Déconnexion', Icons.logout, () {
           context.read<UserProvider>().clearUser();
@@ -200,21 +205,21 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
             MaterialPageRoute(builder: (context) => const WelcomeScreen()),
                 (route) => false,
           );
-        }),
+        }, isDark, primaryColor),
       ],
     );
   }
 
-  Widget _buildHeaderBtn(String text, IconData icon, VoidCallback onPressed) {
+  Widget _buildHeaderBtn(String text, IconData icon, VoidCallback onPressed, bool isDark, Color primaryColor) {
     return ElevatedButton.icon(
       onPressed: onPressed,
       icon: Icon(icon, size: 12),
       label: Text(text, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
       style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF33A1C9),
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        foregroundColor: primaryColor,
         elevation: 0,
-        side: const BorderSide(color: Color(0xFF33A1C9), width: 1),
+        side: BorderSide(color: primaryColor, width: 1),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         minimumSize: const Size(0, 30),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -222,18 +227,18 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
     );
   }
 
-  Widget _buildBandeauVerrouillage() {
+  Widget _buildBandeauVerrouillage(bool isDark) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.orange[50],
+        color: isDark ? Colors.orange.withOpacity(0.1) : Colors.orange[50],
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.orange[300]!, width: 1.5),
+        border: Border.all(color: isDark ? Colors.orange.withOpacity(0.3) : Colors.orange[300]!, width: 1.5),
       ),
       child: Row(
         children: [
-          Icon(Icons.lock, color: Colors.orange[700], size: 22),
+          Icon(Icons.lock, color: isDark ? Colors.orange[300] : Colors.orange[700], size: 22),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -244,12 +249,12 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
                   style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
-                      color: Colors.orange[800]),
+                      color: isDark ? Colors.orange[200] : Colors.orange[800]),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   'Un débrief a été validé pour ce brief.',
-                  style: TextStyle(fontSize: 12, color: Colors.orange[700]),
+                  style: TextStyle(fontSize: 12, color: isDark ? Colors.orange[300] : Colors.orange[700]),
                 ),
               ],
             ),
@@ -259,12 +264,12 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
     );
   }
 
-  Widget _buildFormContainer() {
+  Widget _buildFormContainer(bool isDark, Color primaryColor) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
+        boxShadow: isDark ? [] : [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
             blurRadius: 15,
@@ -273,8 +278,8 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
         ],
         border: Border.all(
           color: _estVerrouille
-              ? Colors.orange.withOpacity(0.3)
-              : const Color(0xFF33A1C9).withOpacity(0.1),
+              ? (isDark ? Colors.orange.withOpacity(0.3) : Colors.orange.withOpacity(0.3))
+              : primaryColor.withOpacity(0.1),
           width: 1,
         ),
       ),
@@ -282,11 +287,11 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildTitle(),
+          _buildTitle(isDark, primaryColor),
           const SizedBox(height: 25),
-          _buildTopRow(),
+          _buildTopRow(isDark, primaryColor),
           const SizedBox(height: 20),
-          _buildMainFields(),
+          _buildMainFields(isDark, primaryColor),
           if (_controller.selectedType != null) ...[
             const SizedBox(height: 25),
             DynamicFieldsSection(
@@ -296,14 +301,31 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
               readOnly: _estVerrouille,
             ),
           ],
+          const SizedBox(height: 25),
+          
+          // Ajout de la section Photo
+          PhotoSelectionWidget(
+            initialPhotosBase64: _photosBase64,
+            onPhotosChanged: (photos) {
+              setState(() => _photosBase64 = photos);
+              if (_controller.lastSavedBriefId != null && !_estVerrouille) {
+                _controller.autoSaveExtras(
+                  briefId: _controller.lastSavedBriefId!,
+                  photos: photos,
+                );
+              }
+            },
+            readOnly: _estVerrouille,
+          ),
+          
           const SizedBox(height: 30),
-          _buildActions(),
+          _buildActions(isDark, primaryColor),
         ],
       ),
     );
   }
 
-  Widget _buildTitle() {
+  Widget _buildTitle(bool isDark, Color primaryColor) {
     final bool isBriefSaved = _controller.lastSavedBriefId != null;
     final user = context.read<UserProvider>();
 
@@ -318,8 +340,8 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
               children: [
                 Text(
                   widget.briefExistant != null ? 'Consultation Brief' : 'Nouveau Brief',
-                  style: const TextStyle(
-                      color: Color(0xFF33A1C9),
+                  style: TextStyle(
+                      color: primaryColor,
                       fontSize: 22,
                       fontWeight: FontWeight.bold),
                 ),
@@ -352,10 +374,10 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
                 )
                     : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: isBriefSaved ? Colors.orange : Colors.grey[300],
+                  backgroundColor: isBriefSaved ? Colors.orange : (isDark ? Colors.grey[800] : Colors.grey[300]),
                   foregroundColor: Colors.white,
-                  disabledBackgroundColor: Colors.grey[200],
-                  disabledForegroundColor: Colors.grey[400],
+                  disabledBackgroundColor: isDark ? Colors.grey[900] : Colors.grey[200],
+                  disabledForegroundColor: Colors.grey[600],
                   elevation: isBriefSaved ? 2 : 0,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
@@ -371,11 +393,11 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
           Row(
             children: [
               if (_controller.isAutoSaving) ...[
-                const SizedBox(
+                SizedBox(
                     width: 10,
                     height: 10,
                     child: CircularProgressIndicator(
-                        strokeWidth: 1.5, color: Color(0xFF33A1C9))),
+                        strokeWidth: 1.5, color: primaryColor)),
                 const SizedBox(width: 5),
                 Text('Sauvegarde...', style: TextStyle(fontSize: 10, color: Colors.grey[500])),
               ] else ...[
@@ -391,7 +413,7 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
     );
   }
 
-  Widget _buildTopRow() {
+  Widget _buildTopRow(bool isDark, Color primaryColor) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -404,6 +426,7 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
                 controller: _controller.numBtController,
                 isRequired: true,
                 readOnly: _estVerrouille,
+                context: context,
               ),
               const SizedBox(height: 12),
               FormFields.buildSmallField(
@@ -411,6 +434,7 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
                 controller: _controller.referentController,
                 isRequired: true,
                 readOnly: _estVerrouille,
+                context: context,
               ),
             ],
           ),
@@ -431,15 +455,18 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
     );
   }
 
-  Widget _buildMainFields() {
+  Widget _buildMainFields(bool isDark, Color primaryColor) {
+    final textColor = isDark ? Colors.white : Colors.black87;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        FormFields.buildLabel("Type d'intervention"),
+        FormFields.buildLabel("Type d'intervention", context: context),
         DropdownButtonFormField<TypeInterventionModel>(
           value: _controller.selectedType,
-          decoration: _dropdownDecoration(),
-          hint: const Text('Sélectionner un type'),
+          decoration: _dropdownDecoration(isDark, primaryColor),
+          dropdownColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          style: TextStyle(color: textColor),
+          hint: Text('Sélectionner un type', style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600])),
           items: _controller.typesIntervention.map((type) {
             return DropdownMenuItem<TypeInterventionModel>(
               value: type,
@@ -454,47 +481,49 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
           },
         ),
         const SizedBox(height: 15),
-        FormFields.buildLabel('Analyse des risques'),
+        FormFields.buildLabel('Analyse des risques', context: context),
         FormFields.buildTextField(
             controller: _controller.risquesController,
             isRequired: false,
-            readOnly: _estVerrouille),
+            readOnly: _estVerrouille,
+            context: context),
         const SizedBox(height: 15),
-        FormFields.buildLabel('État du matériel'),
+        FormFields.buildLabel('État du matériel', context: context),
         FormFields.buildTextField(
             controller: _controller.materielController,
             isRequired: false,
-            readOnly: _estVerrouille),
+            readOnly: _estVerrouille,
+            context: context),
         const SizedBox(height: 15),
-        FormFields.buildLabel('Consigne du jour'),
+        FormFields.buildLabel('Consigne du jour', context: context),
         FormFields.buildTextField(
             controller: _controller.consignesController,
             isRequired: false,
-            readOnly: _estVerrouille),
+            readOnly: _estVerrouille,
+            context: context),
         const SizedBox(height: 15),
-        FormFields.buildLabel('Commentaires'),
+        FormFields.buildLabel('Commentaires', context: context),
         FormFields.buildTextField(
             controller: _controller.commentairesController,
             maxLines: 3,
             isRequired: false,
-            readOnly: _estVerrouille),
+            readOnly: _estVerrouille,
+            context: context),
       ],
     );
   }
 
-  Widget _buildActions() {
+  Widget _buildActions(bool isDark, Color primaryColor) {
     return Wrap(
       alignment: WrapAlignment.spaceBetween,
       crossAxisAlignment: WrapCrossAlignment.end,
       spacing: 20,
       runSpacing: 20,
       children: [
-        // ── Signatures digitales ─────────────────────────────────
         Row(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Signature référent : nom auto depuis UserProvider
             SignatureWidget(
               roleLabel: 'Référent',
               initialSignatureBase64: _signatureReferent,
@@ -504,7 +533,7 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
               onSignatureChanged: (b64) {
                 setState(() => _signatureReferent = b64);
                 if (_controller.lastSavedBriefId != null && b64 != null) {
-                  _controller.autoSaveSignatures(
+                  _controller.autoSaveExtras(
                     briefId: _controller.lastSavedBriefId!,
                     signatureReferent: b64,
                     signatureTechnicien: _signatureTechnicien,
@@ -513,7 +542,6 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
               },
             ),
             const SizedBox(width: 15),
-            // Signature technicien : nom saisi dans le champ "Chef d'équipe"
             SignatureWidget(
               roleLabel: 'Technicien',
               forceNom: _controller.referentController.text.isNotEmpty
@@ -526,7 +554,7 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
               onSignatureChanged: (b64) {
                 setState(() => _signatureTechnicien = b64);
                 if (_controller.lastSavedBriefId != null && b64 != null) {
-                  _controller.autoSaveSignatures(
+                  _controller.autoSaveExtras(
                     briefId: _controller.lastSavedBriefId!,
                     signatureReferent: _signatureReferent,
                     signatureTechnicien: b64,
@@ -537,7 +565,6 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
           ],
         ),
 
-        // ── Bouton Enregistrer ───────────────────────────────────
         if (!_estVerrouille)
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -566,9 +593,9 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: Colors.grey[100],
+              color: isDark ? Colors.grey[900] : Colors.grey[100],
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey[300]!),
+              border: Border.all(color: isDark ? Colors.grey[800]! : Colors.grey[300]!),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -576,7 +603,7 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
                 Icon(Icons.lock_outline, size: 14, color: Colors.grey[500]),
                 const SizedBox(width: 6),
                 Text('Modification impossible',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                    style: TextStyle(fontSize: 12, color: isDark ? Colors.grey[400] : Colors.grey[600])),
               ],
             ),
           ),
@@ -584,24 +611,26 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
     );
   }
 
-  InputDecoration _dropdownDecoration() {
+  InputDecoration _dropdownDecoration(bool isDark, Color primaryColor) {
     return InputDecoration(
       isDense: true,
-      fillColor: _estVerrouille ? Colors.grey[100] : Colors.white,
+      fillColor: _estVerrouille 
+          ? (isDark ? Colors.grey[900] : Colors.grey[100])
+          : (isDark ? const Color(0xFF2C2C2C) : Colors.white),
       filled: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
       border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!)),
+          borderSide: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[300]!)),
       enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[200]!)),
+          borderSide: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[200]!)),
       disabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[200]!)),
+          borderSide: BorderSide(color: isDark ? Colors.grey[900]! : Colors.grey[200]!)),
       focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFF33A1C9), width: 1.5)),
+          borderSide: BorderSide(color: primaryColor, width: 1.5)),
     );
   }
 }

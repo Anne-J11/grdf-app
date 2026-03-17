@@ -169,6 +169,9 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
   }
 
   Future<void> _selectionnerDate() async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
+
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _dateSelectionnee ?? DateTime.now(),
@@ -177,10 +180,9 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFF33A1C9),
-              onPrimary: Colors.white,
-            ),
+            colorScheme: isDark
+                ? ColorScheme.dark(primary: primaryColor, onPrimary: Colors.black)
+                : ColorScheme.light(primary: primaryColor, onPrimary: Colors.white),
           ),
           child: child!,
         );
@@ -198,13 +200,13 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8F9FA);
     final user = context.watch<UserProvider>();
+    final primaryColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFF33A1C9);
 
     return Scaffold(
-      backgroundColor: bgColor,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF33A1C9),
+        backgroundColor: primaryColor,
         title: const Text('Liste des Briefs',
             style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
@@ -254,7 +256,7 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          _buildDateFilter(textColor, bgColor),
+          _buildDateFilter(textColor, bgColor, isDark),
         ],
       ),
     );
@@ -334,7 +336,7 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
     );
   }
 
-  Widget _buildDateFilter(Color textColor, Color bgColor) {
+  Widget _buildDateFilter(Color textColor, Color bgColor, bool isDark) {
     String dateText = 'Toutes les dates';
     if (_dateSelectionnee != null) {
       dateText =
@@ -347,7 +349,7 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: bgColor,
-          border: Border.all(color: Colors.grey[300]!),
+          border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
@@ -368,9 +370,10 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
   }
 
   Widget _buildBody(bool isDark) {
+    final primaryColor = isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
     if (_isLoading) {
-      return const Center(
-          child: CircularProgressIndicator(color: Color(0xFF33A1C9)));
+      return Center(
+          child: CircularProgressIndicator(color: primaryColor));
     }
     if (_briefs.isEmpty) {
       return Center(
@@ -394,14 +397,15 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: _briefs.length,
-        itemBuilder: (context, index) => _buildBriefItem(_briefs[index]),
+        itemBuilder: (context, index) => _buildBriefItem(_briefs[index], isDark),
       ),
     );
   }
 
-  Widget _buildBriefItem(BriefModel brief) {
+  Widget _buildBriefItem(BriefModel brief, bool isDark) {
     final briefId = brief.id!;
     final user = context.read<UserProvider>();
+    final editIconColor = isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
 
     return Column(
       children: [
@@ -430,8 +434,8 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.edit_outlined,
-                          size: 18, color: Color(0xFF33A1C9)),
+                      icon: Icon(Icons.edit_outlined,
+                          size: 18, color: editIconColor),
                       tooltip: 'Modifier',
                       onPressed: () async {
                         await Navigator.push(

@@ -126,6 +126,9 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
   }
 
   Future<void> _selectionnerDate() async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
+
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _dateSelectionnee ?? DateTime.now(),
@@ -134,10 +137,9 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFF33A1C9),
-              onPrimary: Colors.white,
-            ),
+            colorScheme: isDark 
+                ? ColorScheme.dark(primary: primaryColor, onPrimary: Colors.black)
+                : ColorScheme.light(primary: primaryColor, onPrimary: Colors.white),
           ),
           child: child!,
         );
@@ -155,13 +157,13 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8F9FA);
     final user = context.watch<UserProvider>();
+    final appBarColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFF33A1C9);
 
     return Scaffold(
-      backgroundColor: bgColor,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF33A1C9),
+        backgroundColor: appBarColor,
         title: const Text('Liste des Débriefs',
             style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
@@ -211,7 +213,7 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          _buildDateFilter(textColor, bgColor),
+          _buildDateFilter(textColor, bgColor, isDark),
         ],
       ),
     );
@@ -291,7 +293,7 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
     );
   }
 
-  Widget _buildDateFilter(Color textColor, Color bgColor) {
+  Widget _buildDateFilter(Color textColor, Color bgColor, bool isDark) {
     String dateText = 'Toutes les dates';
     if (_dateSelectionnee != null) {
       dateText =
@@ -304,7 +306,7 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: bgColor,
-          border: Border.all(color: Colors.grey[300]!),
+          border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
@@ -325,9 +327,10 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
   }
 
   Widget _buildBody(bool isDark) {
+    final primaryColor = isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
     if (_isLoading) {
-      return const Center(
-          child: CircularProgressIndicator(color: Color(0xFF33A1C9)));
+      return Center(
+          child: CircularProgressIndicator(color: primaryColor));
     }
     if (_debriefs.isEmpty) {
       return Center(
@@ -372,7 +375,6 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
             ? BorderSide(color: Colors.grey[800]!, width: 1)
             : BorderSide.none,
       ),
-      // ✅ AJOUTER InkWell ICI
       child: InkWell(
         onTap: () => DebriefDetailsModal.show(context, debrief),
         borderRadius: BorderRadius.circular(12),
@@ -391,44 +393,41 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
                       color: const Color(0xFF33A1C9).withOpacity(0.1),
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: Text('BT ${debrief.numBt}',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF33A1C9),
-                            fontSize: 13)),
-                  ),
-                  Container(
-                    padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(4),
+                    child: Text(
+                      debrief.numBt,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9),
+                        fontSize: 13,
+                      ),
                     ),
-                    child: Text('Terminé',
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.green[700],
-                            fontWeight: FontWeight.w600)),
+                  ),
+                  Text(
+                    '${debrief.dateIntervention.day.toString().padLeft(2, '0')}/${debrief.dateIntervention.month.toString().padLeft(2, '0')}/${debrief.dateIntervention.year}',
+                    style: TextStyle(color: subtitleColor, fontSize: 12),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Row(children: [
-                Icon(Icons.calendar_today_outlined,
-                    size: 13, color: subtitleColor),
-                const SizedBox(width: 4),
-                Text(
-                  '${debrief.dateIntervention.day.toString().padLeft(2, '0')}/${debrief.dateIntervention.month.toString().padLeft(2, '0')}/${debrief.dateIntervention.year}',
-                  style: TextStyle(fontSize: 12, color: subtitleColor),
-                ),
-              ]),
-              if (debrief.commentaires != null &&
-                  debrief.commentaires!.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Icon(Icons.person_outline,
+                      size: 16, color: subtitleColor),
+                  const SizedBox(width: 6),
+                  Text(
+                    // Afficher le nom du signataire s'il existe dans les champs spécifiques
+                    debrief.champsSpecifiques?['signature_technicien'] ?? 'Technicien',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w500, fontSize: 13, color: textColor),
+                  ),
+                ],
+              ),
+              if (debrief.commentaires != null && debrief.commentaires!.isNotEmpty) ...[
                 const SizedBox(height: 6),
                 Text(
                   debrief.commentaires!,
-                  style: TextStyle(fontSize: 12, color: textColor),
-                  maxLines: 2,
+                  style: TextStyle(color: subtitleColor, fontSize: 12),
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ],

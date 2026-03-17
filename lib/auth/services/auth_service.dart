@@ -2,11 +2,17 @@
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  static const String _kLoginAttemptsKey = 'login_attempts';
+  static const String _kLastAttemptTimeKey = 'last_attempt_time';
+  static const int _maxAttempts = 5;
+  static const int _lockTimeMinutes = 15;
 
   // Obtenir l'utilisateur actuel
   User? get currentUser => _auth.currentUser;
@@ -58,16 +64,40 @@ class AuthService {
     }
   }
 
-  // Connexion
+  // Connexion avec limitation de tentatives
   Future<UserModel> login(String email, String password) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // 1. Vérifier si bloqué
+    int attempts = prefs.getInt(_kLoginAttemptsKey) ?? 0;
+    int? lastAttemptMs = prefs.getInt(_kLastAttemptTimeKey);
+
+    if (attempts >= _maxAttempts && lastAttemptMs != null) {
+      final lastAttempt = DateTime.fromMillisecondsSinceEpoch(lastAttemptMs);
+      final difference = DateTime.now().difference(lastAttempt);
+
+      if (difference.inMinutes < _lockTimeMinutes) {
+        final remaining = _lockTimeMinutes - difference.inMinutes;
+        throw Exception('Trop de tentatives. Veuillez attendre $remaining minute(s).');
+      } else {
+        // Temps de blocage écoulé, on réinitialise
+        await prefs.setInt(_kLoginAttemptsKey, 0);
+        attempts = 0;
+      }
+    }
+
     try {
-      // 1. Se connecter avec Firebase Auth
+      // 2. Tenter la connexion
       UserCredential userCredential = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      // 2. Récupérer les données depuis Firestore
+      // 3. Succès : Réinitialiser les tentatives
+      await prefs.setInt(_kLoginAttemptsKey, 0);
+      await prefs.remove(_kLastAttemptTimeKey);
+
+      // 4. Récupérer les données depuis Firestore
       DocumentSnapshot doc = await _firestore
           .collection('users')
           .doc(userCredential.user!.uid)
@@ -77,12 +107,16 @@ class AuthService {
         throw Exception('Utilisateur introuvable dans la base de données');
       }
 
-      // 3. Créer l'objet UserModel
       return UserModel.fromFirestore(
         doc.data() as Map<String, dynamic>,
         doc.id,
       );
     } on FirebaseAuthException catch (e) {
+      // 5. Échec : Incrémenter le compteur
+      attempts++;
+      await prefs.setInt(_kLoginAttemptsKey, attempts);
+      await prefs.setInt(_kLastAttemptTimeKey, DateTime.now().millisecondsSinceEpoch);
+
       throw _handleAuthException(e);
     } catch (e) {
       throw Exception('Erreur lors de la connexion: $e');

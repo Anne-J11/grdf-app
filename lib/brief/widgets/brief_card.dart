@@ -1,6 +1,4 @@
 // lib/brief/widgets/brief_card.dart
-// Modification : ajout du badge 🔒 "Verrouillé" si brief.estVerrouille == true.
-// Le reste est identique au code de ta collègue.
 
 import 'package:flutter/material.dart';
 import '../models/brief_model.dart';
@@ -17,12 +15,25 @@ class BriefCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Adaptation des couleurs pour le dark mode
+    final cardColor = brief.estVerrouille
+        ? (isDark ? Colors.grey[900] : Colors.grey[50])
+        : Theme.of(context).cardColor;
+
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subtitleColor = isDark ? Colors.grey[400] : Colors.grey[600];
+    final primaryColor = const Color(0xFF33A1C9);
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      // Fond légèrement grisé si verrouillé
-      color: brief.estVerrouille ? Colors.grey[50] : Colors.white,
+      elevation: isDark ? 0 : 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: isDark ? BorderSide(color: Colors.grey[800]!, width: 1) : BorderSide.none,
+      ),
+      color: cardColor,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
@@ -41,14 +52,14 @@ class BriefCard extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF33A1C9).withOpacity(0.1),
+                          color: primaryColor.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
                           brief.numBt,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF33A1C9),
+                            color: isDark ? const Color(0xFF4DB8D9) : primaryColor,
                             fontSize: 13,
                           ),
                         ),
@@ -64,23 +75,23 @@ class BriefCard extends StatelessWidget {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.orange[50],
+                              color: isDark ? Colors.orange.withOpacity(0.1) : Colors.orange[50],
                               borderRadius: BorderRadius.circular(4),
                               border: Border.all(
-                                  color: Colors.orange[200]!),
+                                  color: isDark ? Colors.orange.withOpacity(0.3) : Colors.orange[200]!),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(Icons.lock,
                                     size: 10,
-                                    color: Colors.orange[700]),
+                                    color: isDark ? Colors.orange[300] : Colors.orange[700]),
                                 const SizedBox(width: 3),
                                 Text(
                                   'Verrouillé',
                                   style: TextStyle(
                                       fontSize: 9,
-                                      color: Colors.orange[700],
+                                      color: isDark ? Colors.orange[300] : Colors.orange[700],
                                       fontWeight: FontWeight.bold),
                                 ),
                               ],
@@ -92,7 +103,7 @@ class BriefCard extends StatelessWidget {
                   ),
                   Text(
                     '${brief.dateIntervention.day.toString().padLeft(2, '0')}/${brief.dateIntervention.month.toString().padLeft(2, '0')}/${brief.dateIntervention.year}',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    style: TextStyle(color: subtitleColor, fontSize: 12),
                   ),
                 ],
               ),
@@ -100,12 +111,12 @@ class BriefCard extends StatelessWidget {
               Row(
                 children: [
                   Icon(Icons.person_outline,
-                      size: 16, color: Colors.grey[600]),
+                      size: 16, color: subtitleColor),
                   const SizedBox(width: 6),
                   Text(
                     brief.referentNom,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w500, fontSize: 13),
+                    style: TextStyle(
+                        fontWeight: FontWeight.w500, fontSize: 13, color: textColor),
                   ),
                 ],
               ),
@@ -113,13 +124,13 @@ class BriefCard extends StatelessWidget {
               Row(
                 children: [
                   Icon(Icons.build_outlined,
-                      size: 16, color: Colors.grey[600]),
+                      size: 16, color: subtitleColor),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       brief.materiel,
                       style: TextStyle(
-                          color: Colors.grey[700], fontSize: 13),
+                          color: isDark ? Colors.grey[300] : Colors.grey[700], fontSize: 13),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),

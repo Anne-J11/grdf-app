@@ -1,21 +1,26 @@
 // lib/brief/widgets/form_fields.dart
-// Modification : ajout du paramètre readOnly sur les 3 builders de champs
-// pour supporter le mode lecture seule des briefs verrouillés.
-// Le reste (styles, logique, signatures box) est identique.
 
 import 'package:flutter/material.dart';
 
 class FormFields {
 
-  static Widget buildLabel(String text) {
+  static Widget buildLabel(String text, {BuildContext? context}) {
+    Color? color;
+    if (context != null) {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      color = isDark ? Colors.grey[300] : const Color(0xFF2C3E50);
+    } else {
+      color = const Color(0xFF2C3E50);
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w600,
-          color: Color(0xFF2C3E50),
+          color: color,
         ),
       ),
     );
@@ -27,18 +32,28 @@ class FormFields {
     int maxLines = 1,
     bool isRequired = true,
     bool readOnly = false,
+    BuildContext? context,
   }) {
+    final bool isDark = context != null && Theme.of(context).brightness == Brightness.dark;
+    final Color textColor = isDark ? Colors.white : Colors.black87;
+    final Color readOnlyTextColor = isDark ? Colors.grey[500]! : Colors.grey[600]!;
+    final Color fillColor = readOnly
+        ? (isDark ? Colors.grey[900]! : Colors.grey[100]!)
+        : (isDark ? const Color(0xFF2C2C2C) : const Color(0xFFF8F9FA));
+    final Color borderColor = isDark ? Colors.grey[800]! : Colors.grey[200]!;
+    final Color primaryColor = isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
+
     return TextFormField(
       controller: controller,
       maxLines: maxLines,
       readOnly: readOnly,
       style: TextStyle(
           fontSize: 13,
-          color: readOnly ? Colors.grey[600] : Colors.black87),
+          color: readOnly ? readOnlyTextColor : textColor),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: TextStyle(color: Colors.grey[400], fontSize: 12),
-        fillColor: readOnly ? Colors.grey[100] : const Color(0xFFF8F9FA),
+        hintStyle: TextStyle(color: isDark ? Colors.grey[600] : Colors.grey[400], fontSize: 12),
+        fillColor: fillColor,
         filled: true,
         isDense: true,
         contentPadding:
@@ -49,12 +64,12 @@ class FormFields {
         enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide(
-                color: readOnly ? Colors.grey[300]! : Colors.grey[200]!)),
+                color: readOnly ? (isDark ? Colors.grey[800]! : Colors.grey[300]!) : borderColor)),
         focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: readOnly
-                ? BorderSide(color: Colors.grey[300]!)
-                : const BorderSide(color: Color(0xFF33A1C9), width: 1.5)),
+                ? BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[300]!)
+                : BorderSide(color: primaryColor, width: 1.5)),
       ),
       validator: isRequired && !readOnly
           ? (value) {
@@ -72,35 +87,45 @@ class FormFields {
     required TextEditingController controller,
     bool isRequired = true,
     bool readOnly = false,
+    BuildContext? context,
   }) {
+    final bool isDark = context != null && Theme.of(context).brightness == Brightness.dark;
+    final Color textColor = isDark ? Colors.white : Colors.black87;
+    final Color readOnlyTextColor = isDark ? Colors.grey[500]! : Colors.grey[600]!;
+    final Color fillColor = readOnly
+        ? (isDark ? Colors.grey[900]! : Colors.grey[100]!)
+        : (isDark ? const Color(0xFF2C2C2C) : Colors.white);
+    final Color borderColor = isDark ? Colors.grey[700]! : Colors.grey[200]!;
+    final Color primaryColor = isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        buildLabel(label),
+        buildLabel(label, context: context),
         TextFormField(
           controller: controller,
           readOnly: readOnly,
           style: TextStyle(
               fontSize: 13,
-              color: readOnly ? Colors.grey[600] : Colors.black87),
+              color: readOnly ? readOnlyTextColor : textColor),
           decoration: InputDecoration(
             isDense: true,
-            fillColor: readOnly ? Colors.grey[100] : Colors.white,
+            fillColor: fillColor,
             filled: true,
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey[300]!)),
+                borderSide: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[300]!)),
             enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(
-                    color: readOnly ? Colors.grey[300]! : Colors.grey[200]!)),
+                    color: readOnly ? (isDark ? Colors.grey[800]! : Colors.grey[300]!) : borderColor)),
             focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: readOnly
-                    ? BorderSide(color: Colors.grey[300]!)
-                    : const BorderSide(color: Color(0xFF33A1C9), width: 1.5)),
+                    ? BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[300]!)
+                    : BorderSide(color: primaryColor, width: 1.5)),
           ),
           validator: isRequired && !readOnly
               ? (value) {
@@ -121,10 +146,19 @@ class FormFields {
     bool isRequired = true,
     bool readOnly = false,
   }) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color textColor = isDark ? Colors.white : Colors.black87;
+    final Color readOnlyTextColor = isDark ? Colors.grey[500]! : Colors.grey[600]!;
+    final Color fillColor = readOnly
+        ? (isDark ? Colors.grey[900]! : Colors.grey[100]!)
+        : (isDark ? const Color(0xFF2C2C2C) : Colors.white);
+    final Color borderColor = isDark ? Colors.grey[800]! : Colors.grey[200]!;
+    final Color primaryColor = isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        buildLabel(label),
+        buildLabel(label, context: context),
         InkWell(
           onTap: readOnly
               ? null
@@ -135,6 +169,16 @@ class FormFields {
                     firstDate: DateTime(2020),
                     lastDate: DateTime(2030),
                     locale: const Locale('fr', 'FR'),
+                    builder: (context, child) {
+                      return Theme(
+                        data: Theme.of(context).copyWith(
+                          colorScheme: isDark
+                              ? ColorScheme.dark(primary: primaryColor, onPrimary: Colors.black)
+                              : ColorScheme.light(primary: primaryColor, onPrimary: Colors.white),
+                        ),
+                        child: child!,
+                      );
+                    },
                   );
                   if (picked != null) onDateSelected(picked);
                 },
@@ -142,10 +186,10 @@ class FormFields {
             padding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: readOnly ? Colors.grey[100] : Colors.white,
+              color: fillColor,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                  color: readOnly ? Colors.grey[300]! : Colors.grey[200]!),
+                  color: readOnly ? (isDark ? Colors.grey[800]! : Colors.grey[300]!) : borderColor),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -157,14 +201,14 @@ class FormFields {
                   style: TextStyle(
                       fontSize: 13,
                       color: readOnly
-                          ? Colors.grey[600]
-                          : Colors.black87),
+                          ? readOnlyTextColor
+                          : textColor),
                 ),
                 Icon(Icons.calendar_today,
                     size: 16,
                     color: readOnly
-                        ? Colors.grey[400]
-                        : const Color(0xFF33A1C9)),
+                        ? (isDark ? Colors.grey[600] : Colors.grey[400])
+                        : primaryColor),
               ],
             ),
           ),
@@ -173,15 +217,20 @@ class FormFields {
     );
   }
 
-  static Widget buildSignatureBox(String label) {
+  static Widget buildSignatureBox(String label, {BuildContext? context}) {
+    final bool isDark = context != null && Theme.of(context).brightness == Brightness.dark;
+    final Color bgColor = isDark ? const Color(0xFF2C2C2C) : const Color(0xFFF8F9FA);
+    final Color borderColor = isDark ? Colors.grey[800]! : Colors.grey[300]!;
+    final Color textColor = isDark ? Colors.grey[400]! : Colors.grey[600]!;
+
     return Container(
       width: 140,
       height: 60,
       decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FA),
+        color: bgColor,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: Colors.grey[300]!,
+          color: borderColor,
           width: 1.5,
           style: BorderStyle.solid,
         ),
@@ -191,7 +240,7 @@ class FormFields {
         label,
         style: TextStyle(
           fontSize: 10,
-          color: Colors.grey[600],
+          color: textColor,
           fontStyle: FontStyle.italic,
         ),
         textAlign: TextAlign.center,
