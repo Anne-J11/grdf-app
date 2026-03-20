@@ -34,8 +34,57 @@ class _PhotoSelectionWidgetState extends State<PhotoSelectionWidget> {
     _photosBase64 = List.from(widget.initialPhotosBase64);
   }
 
-  // Liste blanche des extensions autorisées pour prévenir l'upload de scripts
-  final List<String> _allowedExtensions = ['.jpg', '.jpeg', '.png', '.heic', '.webp'];
+  /// Vérifie si le fichier est un script malveillant.
+  /// Analyse les Magic Numbers pour les formats d'image.
+  /// Ne scanne les patterns de script QUE si le fichier ne ressemble pas à une image.
+  Future<bool> _isActuallyScript(File file) async {
+    try {
+      final bytes = await file.readAsBytes();
+      if (bytes.length < 12) return true; // Trop petit pour être une image ou un script utile
+
+      // 1. Détection des Magic Numbers (Signatures binaires)
+      bool isJpeg = bytes[0] == 0xFF && bytes[1] == 0xD8;
+      bool isPng = bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47;
+      bool isGif = bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46;
+      bool isWebp = bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46; // RIFF
+      
+      // Signature HEIC/HEIF (Apple/Android moderne)
+      String header12 = String.fromCharCodes(bytes.take(12));
+      bool isHeic = header12.contains('ftypheic') || 
+                    header12.contains('ftypheif') || 
+                    header12.contains('ftypmif1') ||
+                    header12.contains('ftyphevc');
+
+      // SI C'EST UNE IMAGE CONNUE : On valide immédiatement (évite les faux positifs binaires)
+      if (isJpeg || isPng || isGif || isWebp || isHeic) {
+        return false;
+      }
+
+      // 2. SI CE N'EST PAS UNE IMAGE CONNUE : On cherche des traces de script
+      final content = String.fromCharCodes(bytes.take(2048)).toLowerCase();
+      final suspiciousPatterns = [
+        '<?php', '<script', 'javascript:', 'eval(', 'exec(', 'system(', 
+        'chmod ', 'chown ', 'base64_decode'
+      ];
+
+      for (var pattern in suspiciousPatterns) {
+        if (content.contains(pattern)) {
+          return true; // Script détecté
+        }
+      }
+
+      // Par sécurité, si ce n'est ni une image connue ni un script identifié,
+      // on vérifie l'extension. Si c'est une extension image, on accepte.
+      final ext = p.extension(file.path).toLowerCase();
+      if (['.jpg', '.jpeg', '.png', '.heic', '.webp'].contains(ext)) {
+        return false;
+      }
+
+      return true; // Fichier inconnu ou suspect
+    } catch (e) {
+      return true; // Erreur = Sécurité max (blocage)
+    }
+  }
 
   Future<void> _ajouterPhoto(ImageSource source) async {
     try {
@@ -46,18 +95,24 @@ class _PhotoSelectionWidgetState extends State<PhotoSelectionWidget> {
       );
 
       if (image != null) {
-        // VÉRIFICATION DE SÉCURITÉ : Extension du fichier
-        final extension = p.extension(image.path).toLowerCase();
-        if (!_allowedExtensions.contains(extension)) {
+        final file = File(image.path);
+        
+        // VÉRIFICATION DE SÉCURITÉ AMÉLIORÉE
+        bool isScript = await _isActuallyScript(file);
+        
+        if (isScript) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Format de fichier non autorisé (Scripts interdits)'), backgroundColor: Colors.red),
+              const SnackBar(
+                content: Text('Fichier refusé : Format non reconnu ou contenu suspect.'),
+                backgroundColor: Colors.red,
+              ),
             );
           }
           return;
         }
 
-        final bytes = await File(image.path).readAsBytes();
+        final bytes = await file.readAsBytes();
         final base64String = base64Encode(bytes);
         setState(() {
           _photosBase64.add(base64String);

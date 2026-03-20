@@ -32,7 +32,8 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
   // Filtres
   String? _agenceSelectionneeId;
   String? _siteSelectionneId;
-  DateTime? _dateSelectionnee; // ✅ Une seule date
+  DateTime? _dateSelectionnee;
+  DateTime? _dateFinSelectionnee;
 
   bool _isLoading = true;
 
@@ -104,8 +105,23 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
         briefs = await _briefService.getBriefsWithFilters(
           agenceId: _agenceSelectionneeId,
           siteId: _siteSelectionneId,
-          dateIntervention: _dateSelectionnee, // ✅ Une seule date
+          dateIntervention: _dateSelectionnee,
         );
+
+        // Filtre côté client si date de fin définie
+        if (_dateSelectionnee != null && _dateFinSelectionnee != null) {
+          final fin = DateTime(
+            _dateFinSelectionnee!.year,
+            _dateFinSelectionnee!.month,
+            _dateFinSelectionnee!.day,
+            23, 59, 59,
+          );
+          briefs = briefs
+              .where((b) =>
+          !b.dateIntervention.isBefore(_dateSelectionnee!) &&
+              !b.dateIntervention.isAfter(fin))
+              .toList();
+        }
       }
 
       setState(() {
@@ -164,54 +180,82 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
     setState(() {
       _siteSelectionneId = null;
       _dateSelectionnee = null;
+      _dateFinSelectionnee = null;
     });
     _loadBriefs();
   }
 
   Future<void> _selectionnerDate() async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
+    final primaryColor =
+    isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
 
-    final DateTime? picked = await showDatePicker(
+    // Sélection date début
+    final DateTime? debut = await showDatePicker(
       context: context,
       initialDate: _dateSelectionnee ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2030),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: isDark
-                ? ColorScheme.dark(primary: primaryColor, onPrimary: Colors.black)
-                : ColorScheme.light(primary: primaryColor, onPrimary: Colors.white),
-          ),
-          child: child!,
-        );
-      },
+      helpText: 'Date de début',
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: isDark
+              ? ColorScheme.dark(
+              primary: primaryColor, onPrimary: Colors.black)
+              : ColorScheme.light(
+              primary: primaryColor, onPrimary: Colors.white),
+        ),
+        child: child!,
+      ),
+    );
+    if (debut == null) return;
+
+    // Sélection date fin
+    final DateTime? fin = await showDatePicker(
+      context: context,
+      initialDate: _dateFinSelectionnee ?? debut,
+      firstDate: debut,
+      lastDate: DateTime(2030),
+      helpText: 'Date de fin',
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: isDark
+              ? ColorScheme.dark(
+              primary: primaryColor, onPrimary: Colors.black)
+              : ColorScheme.light(
+              primary: primaryColor, onPrimary: Colors.white),
+        ),
+        child: child!,
+      ),
     );
 
-    if (picked != null) {
-      setState(() {
-        _dateSelectionnee = picked;
-      });
-      _loadBriefs();
-    }
+    setState(() {
+      _dateSelectionnee = debut;
+      _dateFinSelectionnee = fin;
+    });
+    _loadBriefs();
   }
+
+  // ── BUILD ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final user = context.watch<UserProvider>();
-    final primaryColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFF33A1C9);
+    final appBarColor =
+    isDark ? const Color(0xFF1E1E1E) : const Color(0xFF33A1C9);
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: primaryColor,
+        backgroundColor: appBarColor,
         title: const Text('Liste des Briefs',
             style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          if (_siteSelectionneId != null || _dateSelectionnee != null)
+          if (_siteSelectionneId != null ||
+              _dateSelectionnee != null ||
+              _dateFinSelectionnee != null)
             IconButton(
               icon: const Icon(Icons.filter_alt_off, color: Colors.white),
               tooltip: 'Réinitialiser les filtres',
@@ -225,19 +269,29 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
       ),
       body: Column(
         children: [
-          if (!user.isTechnicien) _buildFiltresBar(isDark),
+          if (!user.isTechnicien) _buildFiltresBar(isDark, user),
           Expanded(child: _buildBody(isDark)),
         ],
       ),
     );
   }
 
-  Widget _buildFiltresBar(bool isDark) {
+  Widget _buildFiltresBar(bool isDark, UserProvider user) {
     final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     final textColor = isDark ? Colors.white : Colors.black87;
 
     return Container(
-      color: bgColor,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: bgColor,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -245,12 +299,10 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
           Row(
             children: [
               Expanded(
-                flex: 1,
                 child: _buildAgenceDropdown(textColor, bgColor),
               ),
               const SizedBox(width: 12),
               Expanded(
-                flex: 1,
                 child: _buildSiteDropdown(textColor, bgColor),
               ),
             ],
@@ -277,7 +329,7 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
               isDense: true,
               dropdownColor: bgColor,
               style: TextStyle(fontSize: 12, color: textColor),
-              hint: Text('Agence',
+              hint: const Text('Agence',
                   style: TextStyle(fontSize: 12, color: Colors.grey)),
               items: _agences
                   .map((a) => DropdownMenuItem<String?>(
@@ -312,7 +364,7 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
               isDense: true,
               dropdownColor: bgColor,
               style: TextStyle(fontSize: 12, color: textColor),
-              hint: Text('Tous les sites',
+              hint: const Text('Tous les sites',
                   style: TextStyle(fontSize: 12, color: Colors.grey)),
               items: [
                 DropdownMenuItem<String?>(
@@ -338,9 +390,17 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
 
   Widget _buildDateFilter(Color textColor, Color bgColor, bool isDark) {
     String dateText = 'Toutes les dates';
-    if (_dateSelectionnee != null) {
+    if (_dateSelectionnee != null && _dateFinSelectionnee != null) {
+      final d = _dateSelectionnee!;
+      final f = _dateFinSelectionnee!;
       dateText =
-      '${_dateSelectionnee!.day.toString().padLeft(2, '0')}/${_dateSelectionnee!.month.toString().padLeft(2, '0')}/${_dateSelectionnee!.year}';
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}'
+          ' → '
+          '${f.day.toString().padLeft(2, '0')}/${f.month.toString().padLeft(2, '0')}/${f.year}';
+    } else if (_dateSelectionnee != null) {
+      final d = _dateSelectionnee!;
+      dateText =
+      'Dès le ${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
     }
 
     return InkWell(
@@ -349,12 +409,13 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: bgColor,
-          border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
+          border: Border.all(
+              color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           children: [
-            Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
+            Icon(Icons.date_range, size: 16, color: Colors.grey[600]),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -370,10 +431,11 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
   }
 
   Widget _buildBody(bool isDark) {
-    final primaryColor = isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
+    final primaryColor =
+    isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
+
     if (_isLoading) {
-      return Center(
-          child: CircularProgressIndicator(color: primaryColor));
+      return Center(child: CircularProgressIndicator(color: primaryColor));
     }
     if (_briefs.isEmpty) {
       return Center(
@@ -397,7 +459,8 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: _briefs.length,
-        itemBuilder: (context, index) => _buildBriefItem(_briefs[index], isDark),
+        itemBuilder: (context, index) =>
+            _buildBriefItem(_briefs[index], isDark),
       ),
     );
   }
@@ -405,7 +468,8 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
   Widget _buildBriefItem(BriefModel brief, bool isDark) {
     final briefId = brief.id!;
     final user = context.read<UserProvider>();
-    final editIconColor = isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
+    final editIconColor =
+    isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
 
     return Column(
       children: [

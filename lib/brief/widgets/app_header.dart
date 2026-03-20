@@ -4,11 +4,6 @@ import 'package:flutter/material.dart';
 import '../screens/brief_view_screen.dart';
 
 /// Widget d'en-tête d'application réutilisable
-///
-/// Affiche :
-/// - Le logo de l'application (à gauche)
-/// - Un bouton "Visualisation des briefs" (toujours visible)
-/// - Un bouton "Déconnexion" (à droite)
 class AppHeader extends StatelessWidget {
   final VoidCallback? onVisualisationPressed;
   final VoidCallback onDeconnexionPressed;
@@ -23,14 +18,17 @@ class AppHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Image.asset('assets/img/logo.png', height: 40),
+        // Utilisation de logo_icon.png plus adaptée pour le header
+        Image.asset(
+          'assets/img/logo_icon.png', 
+          height: 40,
+          errorBuilder: (_, __, ___) => Image.asset('assets/img/logo.png', height: 40),
+        ),
         const Spacer(),
 
-        // Bouton "Visualisation des briefs"
         _buildHeaderButton(
           'Visualisation des briefs',
           onVisualisationPressed ?? () {
-            // Par défaut : naviguer vers BriefViewScreen
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -41,7 +39,6 @@ class AppHeader extends StatelessWidget {
         ),
         const SizedBox(width: 8),
 
-        // Bouton "Déconnexion"
         _buildHeaderButton('Déconnexion', onDeconnexionPressed),
       ],
     );
