@@ -6,11 +6,15 @@ import '../models/brief_model.dart';
 import '../models/type_intervention_model.dart';
 import '../services/brief_service.dart';
 import '../services/type_intervention_service.dart';
+import '../../auth/models/agence_model.dart';
+import '../../auth/models/site_model.dart';
+import '../../firestore_service.dart';
 import 'dart:developer' as dev;
 
 class BriefFormController extends ChangeNotifier {
   final BriefService _briefService = BriefService();
   final TypeInterventionService _typeService = TypeInterventionService();
+  final FirestoreService _firestoreService = FirestoreService();
 
   final TextEditingController numBtController = TextEditingController();
   final TextEditingController lieuController = TextEditingController();
@@ -28,6 +32,15 @@ class BriefFormController extends ChangeNotifier {
   bool isAutoSaving = false;
   String? lastSavedBriefId;
 
+  // ── Agence / Site ────────────────────────────────────────────────────────
+  List<AgenceModel> agences = [];
+  List<SiteModel> sites = [];
+  List<SiteModel> sitesFiltres = [];
+  String? selectedAgenceId;
+  String? selectedSiteId;
+  bool isLoadingAgences = false;
+  bool isLoadingSites = false;
+
   Map<String, TextEditingController> dynamicControllers = {};
 
   Timer? _debounceTimer;
@@ -35,10 +48,80 @@ class BriefFormController extends ChangeNotifier {
   Future<void> init() async {
     isLoading = true;
     notifyListeners();
-    typesIntervention = await _typeService.getAllTypes();
+
+    // Chargement en parallèle des types et des agences
+    await Future.wait([
+      _typeService.getAllTypes().then((types) => typesIntervention = types),
+      _loadAgences(),
+    ]);
+
     isLoading = false;
     notifyListeners();
   }
+
+  Future<void> _loadAgences() async {
+    try {
+      isLoadingAgences = true;
+      agences = await _firestoreService.getAgences();
+      isLoadingAgences = false;
+    } catch (e) {
+      dev.log('Erreur chargement agences : $e');
+      isLoadingAgences = false;
+    }
+  }
+
+  /// Appelé depuis l'écran pour pré-sélectionner l'agence de l'utilisateur
+  /// et charger les sites correspondants.
+  Future<void> initAgenceSite({
+    required String agenceId,
+    required String siteId,
+  }) async {
+    selectedAgenceId = agenceId.isNotEmpty ? agenceId : null;
+    selectedSiteId = null; // sera défini après le chargement des sites
+    if (selectedAgenceId != null) {
+      await _loadSitesByAgence(selectedAgenceId!, preselectSiteId: siteId);
+    }
+    notifyListeners();
+  }
+
+  Future<void> onAgenceChanged(String? agenceId) async {
+    selectedAgenceId = agenceId;
+    selectedSiteId = null;
+    sitesFiltres = [];
+    notifyListeners();
+
+    if (agenceId != null) {
+      await _loadSitesByAgence(agenceId);
+    }
+    invalidateSavedBrief();
+    notifyListeners();
+  }
+
+  Future<void> _loadSitesByAgence(String agenceId,
+      {String? preselectSiteId}) async {
+    try {
+      isLoadingSites = true;
+      notifyListeners();
+      sitesFiltres = await _firestoreService.getSitesByAgence(agenceId);
+      // Pré-sélection du site si fourni et présent dans la liste
+      if (preselectSiteId != null &&
+          sitesFiltres.any((s) => s.id == preselectSiteId)) {
+        selectedSiteId = preselectSiteId;
+      }
+      isLoadingSites = false;
+    } catch (e) {
+      dev.log('Erreur chargement sites : $e');
+      isLoadingSites = false;
+    }
+  }
+
+  void onSiteChanged(String? siteId) {
+    selectedSiteId = siteId;
+    invalidateSavedBrief();
+    notifyListeners();
+  }
+
+  // ── Reste du contrôleur (inchangé) ───────────────────────────────────────
 
   void invalidateSavedBrief() {
     if (lastSavedBriefId != null) {
@@ -136,23 +219,31 @@ class BriefFormController extends ChangeNotifier {
 
   Future<bool> saveBriefWithExtras({
     required String referentId,
-    required String agenceId,
-    required String siteId,
+    // agenceId et siteId ne sont plus passés depuis l'écran :
+    // on utilise la sélection interne du contrôleur.
+    // Conservés en fallback pour la compatibilité (pré-remplissage brief existant).
+    String? agenceIdFallback,
+    String? siteIdFallback,
     Map<String, dynamic>? extraChamps,
   }) async {
     if (selectedType == null) return false;
+
+    final String resolvedAgenceId =
+        selectedAgenceId ?? agenceIdFallback ?? '';
+    final String resolvedSiteId = selectedSiteId ?? siteIdFallback ?? '';
+
+    if (resolvedSiteId.isEmpty) return false;
+
     isSaving = true;
     notifyListeners();
 
     try {
       final Map<String, dynamic> champsSpecifiques = {};
 
-      // Champs dynamiques du type d'intervention
       dynamicControllers.forEach((key, controller) {
         champsSpecifiques[key] = controller.text;
       });
 
-      // Champs extras (signatures, photos, etc.)
       if (extraChamps != null) {
         champsSpecifiques.addAll(extraChamps);
       }
@@ -163,8 +254,8 @@ class BriefFormController extends ChangeNotifier {
         referentId: referentId,
         referentNom: referentController.text,
         typeInterventionNom: selectedType!.nom,
-        agenceId: agenceId,
-        siteId: siteId,
+        agenceId: resolvedAgenceId,
+        siteId: resolvedSiteId,
         dateIntervention: dateIntervention,
         risques: risquesController.text,
         materiel: materielController.text,
@@ -215,6 +306,9 @@ class BriefFormController extends ChangeNotifier {
     selectedType = null;
     lastSavedBriefId = null;
     dateIntervention = DateTime.now();
+    selectedAgenceId = null;
+    selectedSiteId = null;
+    sitesFiltres = [];
     notifyListeners();
   }
 

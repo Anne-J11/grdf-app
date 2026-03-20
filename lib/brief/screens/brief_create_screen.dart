@@ -39,7 +39,18 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
   void initState() {
     super.initState();
     _controller.init().then((_) {
-      if (widget.briefExistant != null) _preRemplir(widget.briefExistant!);
+      if (widget.briefExistant != null) {
+        _preRemplir(widget.briefExistant!);
+      } else {
+        // Nouveau brief : pré-sélectionner l'agence/site de l'utilisateur
+        final user = context.read<UserProvider>();
+        _controller
+            .initAgenceSite(
+          agenceId: user.agenceId,
+          siteId: user.siteId,
+        )
+            .then((_) => setState(() {}));
+      }
     });
     _controller.addListener(_onControllerChange);
     _controller.numBtController.addListener(_controller.invalidateSavedBrief);
@@ -56,11 +67,18 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
     _controller.dateIntervention = brief.dateIntervention;
     _signatureReferent = brief.champsSpecifiques?['signature_referent'];
     _signatureTechnicien = brief.champsSpecifiques?['signature_technicien'];
-    
-    // Récupération des photos
+
     if (brief.champsSpecifiques?['photos'] != null) {
       _photosBase64 = List<String>.from(brief.champsSpecifiques!['photos']);
     }
+
+    // Pré-sélectionner agence + site depuis le brief existant
+    _controller
+        .initAgenceSite(
+      agenceId: brief.agenceId,
+      siteId: brief.siteId,
+    )
+        .then((_) => setState(() {}));
 
     if (brief.typeInterventionId.isNotEmpty) {
       try {
@@ -68,7 +86,9 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
             .firstWhere((t) => t.id == brief.typeInterventionId);
         _controller.onTypeChanged(type);
         brief.champsSpecifiques?.forEach((key, value) {
-          if (key != 'signature_referent' && key != 'signature_technicien' && key != 'photos') {
+          if (key != 'signature_referent' &&
+              key != 'signature_technicien' &&
+              key != 'photos') {
             _controller.dynamicControllers[key]?.text = value.toString();
           }
         });
@@ -91,7 +111,15 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
   Future<void> _saveBrief() async {
     if (_estVerrouille) return;
     if (!_formKey.currentState!.validate()) {
-      _showMessage('Veuillez remplir tous les champs obligatoires', isError: true);
+      _showMessage('Veuillez remplir tous les champs obligatoires',
+          isError: true);
+      return;
+    }
+
+    // Vérification du site sélectionné
+    if (_controller.selectedSiteId == null ||
+        _controller.selectedSiteId!.isEmpty) {
+      _showMessage('Veuillez sélectionner un site', isError: true);
       return;
     }
 
@@ -110,13 +138,16 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
 
     final success = await _controller.saveBriefWithExtras(
       referentId: user.uid,
-      agenceId: user.agenceId,
-      siteId: user.siteId,
+      // Les fallbacks ne sont utilisés qu'en dernier recours
+      agenceIdFallback: user.agenceId,
+      siteIdFallback: user.siteId,
       extraChamps: extras,
     );
 
     if (success) {
       _showMessage('Brief enregistré avec succès !');
+    } else if (_controller.selectedSiteId == null) {
+      _showMessage('Veuillez sélectionner un site', isError: true);
     } else {
       _showMessage("Erreur lors de l'enregistrement", isError: true);
     }
@@ -143,7 +174,8 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
+    final primaryColor =
+    isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
 
     if (_controller.isLoading) {
       return Scaffold(
@@ -154,7 +186,8 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: isDark ? const Color(0xFF1E1E1E) : const Color(0xFF33A1C9),
+        backgroundColor:
+        isDark ? const Color(0xFF1E1E1E) : const Color(0xFF33A1C9),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           tooltip: 'Retour accueil',
@@ -168,7 +201,8 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 15.0, vertical: 20),
+          padding:
+          const EdgeInsets.symmetric(horizontal: 15.0, vertical: 20),
           child: Form(
             key: _formKey,
             child: Column(
@@ -186,13 +220,15 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
     );
   }
 
+  // ── EN-TÊTE ────────────────────────────────────────────────────────────────
   Widget _buildHeader(bool isDark, Color primaryColor) {
     return Row(
       children: [
         Image.asset('assets/img/logo.png', height: 40,
             errorBuilder: (_, __, ___) => const SizedBox(width: 40)),
         const Spacer(),
-        _buildHeaderBtn('Accueil', Icons.home_outlined, _retourAccueil, isDark, primaryColor),
+        _buildHeaderBtn('Accueil', Icons.home_outlined, _retourAccueil,
+            isDark, primaryColor),
         const SizedBox(width: 6),
         _buildHeaderBtn('Briefs', Icons.list_alt_outlined, () {
           Navigator.pushNamed(context, '/briefs');
@@ -210,11 +246,13 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
     );
   }
 
-  Widget _buildHeaderBtn(String text, IconData icon, VoidCallback onPressed, bool isDark, Color primaryColor) {
+  Widget _buildHeaderBtn(String text, IconData icon, VoidCallback onPressed,
+      bool isDark, Color primaryColor) {
     return ElevatedButton.icon(
       onPressed: onPressed,
       icon: Icon(icon, size: 12),
-      label: Text(text, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+      label: Text(text,
+          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
       style: ElevatedButton.styleFrom(
         backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         foregroundColor: primaryColor,
@@ -227,18 +265,27 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
     );
   }
 
+  // ── BANDEAU VERROUILLAGE ───────────────────────────────────────────────────
   Widget _buildBandeauVerrouillage(bool isDark) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: isDark ? Colors.orange.withOpacity(0.1) : Colors.orange[50],
+        color: isDark
+            ? Colors.orange.withOpacity(0.1)
+            : Colors.orange[50],
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isDark ? Colors.orange.withOpacity(0.3) : Colors.orange[300]!, width: 1.5),
+        border: Border.all(
+            color: isDark
+                ? Colors.orange.withOpacity(0.3)
+                : Colors.orange[300]!,
+            width: 1.5),
       ),
       child: Row(
         children: [
-          Icon(Icons.lock, color: isDark ? Colors.orange[300] : Colors.orange[700], size: 22),
+          Icon(Icons.lock,
+              color: isDark ? Colors.orange[300] : Colors.orange[700],
+              size: 22),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -249,12 +296,18 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
                   style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
-                      color: isDark ? Colors.orange[200] : Colors.orange[800]),
+                      color: isDark
+                          ? Colors.orange[200]
+                          : Colors.orange[800]),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   'Un débrief a été validé pour ce brief.',
-                  style: TextStyle(fontSize: 12, color: isDark ? Colors.orange[300] : Colors.orange[700]),
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: isDark
+                          ? Colors.orange[300]
+                          : Colors.orange[700]),
                 ),
               ],
             ),
@@ -264,12 +317,15 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
     );
   }
 
+  // ── CONTENEUR PRINCIPAL DU FORMULAIRE ─────────────────────────────────────
   Widget _buildFormContainer(bool isDark, Color primaryColor) {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: isDark ? [] : [
+        boxShadow: isDark
+            ? []
+            : [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
             blurRadius: 15,
@@ -278,7 +334,9 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
         ],
         border: Border.all(
           color: _estVerrouille
-              ? (isDark ? Colors.orange.withOpacity(0.3) : Colors.orange.withOpacity(0.3))
+              ? (isDark
+              ? Colors.orange.withOpacity(0.3)
+              : Colors.orange.withOpacity(0.3))
               : primaryColor.withOpacity(0.1),
           width: 1,
         ),
@@ -289,6 +347,11 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
         children: [
           _buildTitle(isDark, primaryColor),
           const SizedBox(height: 25),
+
+          // ── Sélection Agence + Site ──────────────────────────────────
+          _buildAgenceSiteRow(isDark, primaryColor),
+          const SizedBox(height: 20),
+
           _buildTopRow(isDark, primaryColor),
           const SizedBox(height: 20),
           _buildMainFields(isDark, primaryColor),
@@ -302,8 +365,7 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
             ),
           ],
           const SizedBox(height: 25),
-          
-          // Ajout de la section Photo
+
           PhotoSelectionWidget(
             initialPhotosBase64: _photosBase64,
             onPhotosChanged: (photos) {
@@ -317,7 +379,7 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
             },
             readOnly: _estVerrouille,
           ),
-          
+
           const SizedBox(height: 30),
           _buildActions(isDark, primaryColor),
         ],
@@ -325,6 +387,7 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
     );
   }
 
+  // ── TITRE + BOUTON DÉBRIEF ─────────────────────────────────────────────────
   Widget _buildTitle(bool isDark, Color primaryColor) {
     final bool isBriefSaved = _controller.lastSavedBriefId != null;
     final user = context.read<UserProvider>();
@@ -339,7 +402,9 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.briefExistant != null ? 'Consultation Brief' : 'Nouveau Brief',
+                  widget.briefExistant != null
+                      ? 'Consultation Brief'
+                      : 'Nouveau Brief',
                   style: TextStyle(
                       color: primaryColor,
                       fontSize: 22,
@@ -364,26 +429,34 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
                     builder: (context) => DebriefCreateScreen(
                       briefId: _controller.lastSavedBriefId!,
                       numBt: _controller.numBtController.text,
-                      typeInterventionNom: _controller.selectedType?.nom,
-                      referentNom: _controller.referentController.text.isNotEmpty
+                      typeInterventionNom:
+                      _controller.selectedType?.nom,
+                      referentNom: _controller
+                          .referentController.text.isNotEmpty
                           ? _controller.referentController.text
                           : user.nomComplet,
-                      agenceId: user.agenceId,
+                      agenceId: _controller.selectedAgenceId ??
+                          user.agenceId,
                     ),
                   ),
                 )
                     : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: isBriefSaved ? Colors.orange : (isDark ? Colors.grey[800] : Colors.grey[300]),
+                  backgroundColor: isBriefSaved
+                      ? Colors.orange
+                      : (isDark ? Colors.grey[800] : Colors.grey[300]),
                   foregroundColor: Colors.white,
-                  disabledBackgroundColor: isDark ? Colors.grey[900] : Colors.grey[200],
+                  disabledBackgroundColor:
+                  isDark ? Colors.grey[900] : Colors.grey[200],
                   disabledForegroundColor: Colors.grey[600],
                   elevation: isBriefSaved ? 2 : 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
                 ),
                 child: Text(
                   isBriefSaved ? 'Créer un débrief' : "Enregistrer d'abord",
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 11),
                 ),
               ),
           ],
@@ -399,9 +472,11 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
                     child: CircularProgressIndicator(
                         strokeWidth: 1.5, color: primaryColor)),
                 const SizedBox(width: 5),
-                Text('Sauvegarde...', style: TextStyle(fontSize: 10, color: Colors.grey[500])),
+                Text('Sauvegarde...',
+                    style: TextStyle(fontSize: 10, color: Colors.grey[500])),
               ] else ...[
-                Icon(Icons.check_circle_outline, size: 12, color: Colors.green[400]),
+                Icon(Icons.check_circle_outline,
+                    size: 12, color: Colors.green[400]),
                 const SizedBox(width: 4),
                 Text('Sauvegardé automatiquement',
                     style: TextStyle(fontSize: 10, color: Colors.green[400])),
@@ -413,6 +488,157 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
     );
   }
 
+  // ── SÉLECTION AGENCE + SITE ────────────────────────────────────────────────
+  Widget _buildAgenceSiteRow(bool isDark, Color primaryColor) {
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final fillColor = _estVerrouille
+        ? (isDark ? Colors.grey[900]! : Colors.grey[100]!)
+        : (isDark ? const Color(0xFF2C2C2C) : Colors.white);
+    final borderColor =
+    isDark ? Colors.grey[800]! : Colors.grey[200]!;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Dropdown Agence ──
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              FormFields.buildLabel('Agence *', context: context),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: fillColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: borderColor),
+                ),
+                child: _controller.isLoadingAgences
+                    ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Center(
+                      child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2))),
+                )
+                    : DropdownButtonHideUnderline(
+                  child: DropdownButton<String?>(
+                    value: _controller.selectedAgenceId,
+                    isExpanded: true,
+                    isDense: true,
+                    dropdownColor: isDark
+                        ? const Color(0xFF1E1E1E)
+                        : Colors.white,
+                    style: TextStyle(fontSize: 13, color: textColor),
+                    hint: Text(
+                      'Sélectionner une agence',
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: isDark
+                              ? Colors.grey[500]
+                              : Colors.grey[500]),
+                    ),
+                    items: _controller.agences
+                        .map((a) => DropdownMenuItem<String?>(
+                      value: a.id,
+                      child: Text(a.nom,
+                          style:
+                          TextStyle(color: textColor)),
+                    ))
+                        .toList(),
+                    onChanged: _estVerrouille
+                        ? null
+                        : (val) async {
+                      await _controller.onAgenceChanged(val);
+                      setState(() {});
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(width: 15),
+
+        // ── Dropdown Site ──
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              FormFields.buildLabel('Site *', context: context),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: fillColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _controller.selectedSiteId == null &&
+                        !_estVerrouille &&
+                        _controller.selectedAgenceId != null
+                        ? Colors.orange.withOpacity(0.5)
+                        : borderColor,
+                  ),
+                ),
+                child: _controller.isLoadingSites
+                    ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Center(
+                      child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2))),
+                )
+                    : DropdownButtonHideUnderline(
+                  child: DropdownButton<String?>(
+                    value: _controller.selectedSiteId,
+                    isExpanded: true,
+                    isDense: true,
+                    dropdownColor: isDark
+                        ? const Color(0xFF1E1E1E)
+                        : Colors.white,
+                    style: TextStyle(fontSize: 13, color: textColor),
+                    hint: Text(
+                      _controller.selectedAgenceId == null
+                          ? 'Choisir une agence d\'abord'
+                          : _controller.sitesFiltres.isEmpty
+                          ? 'Aucun site disponible'
+                          : 'Sélectionner un site',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: isDark
+                              ? Colors.grey[500]
+                              : Colors.grey[500]),
+                    ),
+                    items: _controller.sitesFiltres
+                        .map((s) => DropdownMenuItem<String?>(
+                      value: s.id,
+                      child: Text(s.nom,
+                          style:
+                          TextStyle(color: textColor)),
+                    ))
+                        .toList(),
+                    onChanged: _estVerrouille ||
+                        _controller.selectedAgenceId == null
+                        ? null
+                        : (val) {
+                      _controller.onSiteChanged(val);
+                      setState(() {});
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── LIGNE HAUTE : N° BT + Chef d'équipe + Date ─────────────────────────────
   Widget _buildTopRow(bool isDark, Color primaryColor) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -446,7 +672,8 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
             context: context,
             label: "Date d'intervention *",
             selectedDate: _controller.dateIntervention,
-            onDateSelected: _estVerrouille ? (_) {} : _controller.setDate,
+            onDateSelected:
+            _estVerrouille ? (_) {} : _controller.setDate,
             isRequired: true,
             readOnly: _estVerrouille,
           ),
@@ -455,6 +682,7 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
     );
   }
 
+  // ── CHAMPS PRINCIPAUX ──────────────────────────────────────────────────────
   Widget _buildMainFields(bool isDark, Color primaryColor) {
     final textColor = isDark ? Colors.white : Colors.black87;
     return Column(
@@ -466,7 +694,9 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
           decoration: _dropdownDecoration(isDark, primaryColor),
           dropdownColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
           style: TextStyle(color: textColor),
-          hint: Text('Sélectionner un type', style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600])),
+          hint: Text('Sélectionner un type',
+              style: TextStyle(
+                  color: isDark ? Colors.grey[400] : Colors.grey[600])),
           items: _controller.typesIntervention.map((type) {
             return DropdownMenuItem<TypeInterventionModel>(
               value: type,
@@ -513,6 +743,7 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
     );
   }
 
+  // ── SIGNATURES + BOUTON ENREGISTRER ───────────────────────────────────────
   Widget _buildActions(bool isDark, Color primaryColor) {
     return Wrap(
       alignment: WrapAlignment.spaceBetween,
@@ -576,14 +807,17 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
                   backgroundColor: const Color(0xFF4CAF50),
                   foregroundColor: Colors.white,
                   elevation: 2,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
                 child: _controller.isSaving
                     ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    child: CircularProgressIndicator(
+                        color: Colors.white, strokeWidth: 2))
                     : const Text('Enregistrer le Brief',
                     style: TextStyle(fontWeight: FontWeight.bold)),
               ),
@@ -591,11 +825,13 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
           )
         else
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: isDark ? Colors.grey[900] : Colors.grey[100],
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: isDark ? Colors.grey[800]! : Colors.grey[300]!),
+              border: Border.all(
+                  color: isDark ? Colors.grey[800]! : Colors.grey[300]!),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -603,7 +839,11 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
                 Icon(Icons.lock_outline, size: 14, color: Colors.grey[500]),
                 const SizedBox(width: 6),
                 Text('Modification impossible',
-                    style: TextStyle(fontSize: 12, color: isDark ? Colors.grey[400] : Colors.grey[600])),
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: isDark
+                            ? Colors.grey[400]
+                            : Colors.grey[600])),
               ],
             ),
           ),
@@ -614,20 +854,24 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
   InputDecoration _dropdownDecoration(bool isDark, Color primaryColor) {
     return InputDecoration(
       isDense: true,
-      fillColor: _estVerrouille 
+      fillColor: _estVerrouille
           ? (isDark ? Colors.grey[900] : Colors.grey[100])
           : (isDark ? const Color(0xFF2C2C2C) : Colors.white),
       filled: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+      contentPadding:
+      const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
       border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[300]!)),
+          borderSide: BorderSide(
+              color: isDark ? Colors.grey[700]! : Colors.grey[300]!)),
       enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[200]!)),
+          borderSide: BorderSide(
+              color: isDark ? Colors.grey[800]! : Colors.grey[200]!)),
       disabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: isDark ? Colors.grey[900]! : Colors.grey[200]!)),
+          borderSide: BorderSide(
+              color: isDark ? Colors.grey[900]! : Colors.grey[200]!)),
       focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: primaryColor, width: 1.5)),

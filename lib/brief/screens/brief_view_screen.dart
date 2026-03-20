@@ -269,14 +269,16 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
       ),
       body: Column(
         children: [
-          if (!user.isTechnicien) _buildFiltresBar(isDark, user),
+          // La barre de filtres est toujours affichée pour les non-techniciens
+          if (!user.isTechnicien) _buildFiltresBar(isDark),
           Expanded(child: _buildBody(isDark)),
         ],
       ),
     );
   }
 
-  Widget _buildFiltresBar(bool isDark, UserProvider user) {
+  // ── BARRE DE FILTRES ───────────────────────────────────────────────────────
+  Widget _buildFiltresBar(bool isDark) {
     final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     final textColor = isDark ? Colors.white : Colors.black87;
 
@@ -284,9 +286,17 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
       width: double.infinity,
       decoration: BoxDecoration(
         color: bgColor,
-        boxShadow: [
+        border: Border(
+          bottom: BorderSide(
+            color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+            width: 1,
+          ),
+        ),
+        boxShadow: isDark
+            ? []
+            : [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withOpacity(0.06),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -296,95 +306,139 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Ligne 1 : Agence + Site
           Row(
             children: [
+              // Filtre Agence
               Expanded(
-                child: _buildAgenceDropdown(textColor, bgColor),
+                child: _buildAgenceDropdown(textColor, bgColor, isDark),
               ),
               const SizedBox(width: 12),
+              // Filtre Site
               Expanded(
-                child: _buildSiteDropdown(textColor, bgColor),
+                child: _buildSiteDropdown(textColor, bgColor, isDark),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
+          // Ligne 2 : Date
           _buildDateFilter(textColor, bgColor, isDark),
         ],
       ),
     );
   }
 
-  Widget _buildAgenceDropdown(Color textColor, Color bgColor) {
-    if (_agences.isEmpty) return const SizedBox.shrink();
-
-    return Row(
-      children: [
-        Icon(Icons.business_outlined, size: 16, color: Colors.grey[600]),
-        const SizedBox(width: 6),
-        Expanded(
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String?>(
-              value: _agenceSelectionneeId,
-              isExpanded: true,
-              isDense: true,
-              dropdownColor: bgColor,
-              style: TextStyle(fontSize: 12, color: textColor),
-              hint: const Text('Agence',
-                  style: TextStyle(fontSize: 12, color: Colors.grey)),
-              items: _agences
-                  .map((a) => DropdownMenuItem<String?>(
-                value: a.id,
-                child: Text(a.nom, style: TextStyle(color: textColor)),
-              ))
-                  .toList(),
-              onChanged: (val) {
-                setState(() {
-                  _agenceSelectionneeId = val;
-                  _filtrerSitesParAgence();
-                });
-                _loadBriefs();
-              },
+  Widget _buildAgenceDropdown(Color textColor, Color bgColor, bool isDark) {
+    // Toujours afficher le widget, même si la liste est vide (chargement en cours)
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF2C2C2C) : Colors.grey[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.business_outlined, size: 15, color: Colors.grey[500]),
+          const SizedBox(width: 6),
+          Expanded(
+            child: _agences.isEmpty
+                ? Text(
+              'Agence',
+              style: TextStyle(
+                  fontSize: 12,
+                  color: isDark ? Colors.grey[500] : Colors.grey[400]),
+            )
+                : DropdownButtonHideUnderline(
+              child: DropdownButton<String?>(
+                value: _agenceSelectionneeId,
+                isExpanded: true,
+                isDense: true,
+                dropdownColor: bgColor,
+                style: TextStyle(fontSize: 12, color: textColor),
+                hint: Text('Toutes les agences',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: isDark
+                            ? Colors.grey[500]
+                            : Colors.grey[500])),
+                items: [
+                  DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('Toutes les agences',
+                        style: TextStyle(color: textColor)),
+                  ),
+                  ..._agences.map((a) => DropdownMenuItem<String?>(
+                    value: a.id,
+                    child: Text(a.nom,
+                        style: TextStyle(color: textColor)),
+                  )),
+                ],
+                onChanged: (val) {
+                  setState(() {
+                    _agenceSelectionneeId = val;
+                    _filtrerSitesParAgence();
+                  });
+                  _loadBriefs();
+                },
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _buildSiteDropdown(Color textColor, Color bgColor) {
-    return Row(
-      children: [
-        Icon(Icons.location_on_outlined, size: 16, color: Colors.grey[600]),
-        const SizedBox(width: 6),
-        Expanded(
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String?>(
-              value: _siteSelectionneId,
-              isExpanded: true,
-              isDense: true,
-              dropdownColor: bgColor,
-              style: TextStyle(fontSize: 12, color: textColor),
-              hint: const Text('Tous les sites',
-                  style: TextStyle(fontSize: 12, color: Colors.grey)),
-              items: [
-                DropdownMenuItem<String?>(
-                  value: null,
-                  child: Text('Tous les sites',
-                      style: TextStyle(color: textColor)),
-                ),
-                ..._sitesFiltres.map((s) => DropdownMenuItem<String?>(
-                  value: s.id,
-                  child: Text(s.nom, style: TextStyle(color: textColor)),
-                )),
-              ],
-              onChanged: (val) {
-                setState(() => _siteSelectionneId = val);
-                _loadBriefs();
-              },
+  Widget _buildSiteDropdown(Color textColor, Color bgColor, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF2C2C2C) : Colors.grey[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.location_on_outlined, size: 15, color: Colors.grey[500]),
+          const SizedBox(width: 6),
+          Expanded(
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String?>(
+                value: _siteSelectionneId,
+                isExpanded: true,
+                isDense: true,
+                dropdownColor: bgColor,
+                style: TextStyle(fontSize: 12, color: textColor),
+                hint: Text('Tous les sites',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color:
+                        isDark ? Colors.grey[500] : Colors.grey[500])),
+                items: [
+                  DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('Tous les sites',
+                        style: TextStyle(color: textColor)),
+                  ),
+                  ..._sitesFiltres.map((s) => DropdownMenuItem<String?>(
+                    value: s.id,
+                    child:
+                    Text(s.nom, style: TextStyle(color: textColor)),
+                  )),
+                ],
+                onChanged: (val) {
+                  setState(() => _siteSelectionneId = val);
+                  _loadBriefs();
+                },
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -405,17 +459,19 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
 
     return InkWell(
       onTap: _selectionnerDate,
+      borderRadius: BorderRadius.circular(8),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: bgColor,
-          border: Border.all(
-              color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
+          color: isDark ? const Color(0xFF2C2C2C) : Colors.grey[50],
           borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+          ),
         ),
         child: Row(
           children: [
-            Icon(Icons.date_range, size: 16, color: Colors.grey[600]),
+            Icon(Icons.date_range, size: 15, color: Colors.grey[500]),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -423,13 +479,15 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
                 style: TextStyle(fontSize: 12, color: textColor),
               ),
             ),
-            Icon(Icons.arrow_drop_down, color: Colors.grey[600]),
+            Icon(Icons.arrow_drop_down,
+                color: isDark ? Colors.grey[500] : Colors.grey[600]),
           ],
         ),
       ),
     );
   }
 
+  // ── CORPS DE LA LISTE ──────────────────────────────────────────────────────
   Widget _buildBody(bool isDark) {
     final primaryColor =
     isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
@@ -465,42 +523,68 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
     );
   }
 
+  // ── ITEM BRIEF : carte + barre d'actions ──────────────────────────────────
   Widget _buildBriefItem(BriefModel brief, bool isDark) {
-    final briefId = brief.id!;
     final user = context.read<UserProvider>();
-    final editIconColor =
+    final primaryColor =
     isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
 
-    return Column(
-      children: [
-        Stack(
-          children: [
-            BriefCard(
-              brief: brief,
-              onTap: () {
-                if (brief.estVerrouille) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) =>
-                            BriefCreateScreen(briefExistant: brief)),
-                  );
-                } else {
-                  BriefDetailsModal.show(context, brief);
-                }
-              },
-            ),
-            if (!brief.estVerrouille)
-              Positioned(
-                top: 4,
-                right: 4,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: Icon(Icons.edit_outlined,
-                          size: 18, color: editIconColor),
-                      tooltip: 'Modifier',
+    // brief.estVerrouille == true  ⟺  un débrief a été validé pour ce brief.
+    // Dans ce cas : Modifier et Créer-débrief sont cachés, mais Supprimer
+    // doit l'être aussi (on ne peut pas supprimer un brief déjà débriefé).
+    // Quand estVerrouille == false : aucun débrief → toutes les actions sont
+    // disponibles selon le rôle.
+    final bool peutSupprimer = user.isReferent && !brief.estVerrouille;
+    final bool peutModifier = !brief.estVerrouille;
+    final bool peutDebriefer = !brief.estVerrouille;
+
+    // La barre d'actions n'a de sens que si au moins un bouton est visible.
+    final bool afficherBarre =
+        peutModifier || peutSupprimer || peutDebriefer;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // La carte est cliquable pour voir le détail
+          BriefCard(
+            brief: brief,
+            onTap: () {
+              if (brief.estVerrouille) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => BriefCreateScreen(briefExistant: brief)),
+                );
+              } else {
+                BriefDetailsModal.show(context, brief);
+              }
+            },
+          ),
+
+          // Barre d'actions sous la carte
+          if (afficherBarre)
+            Container(
+              margin: const EdgeInsets.only(top: 4),
+              padding:
+              const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  // Bouton Modifier (masqué si verrouillé)
+                  if (peutModifier)
+                    _buildActionButton(
+                      icon: Icons.edit_outlined,
+                      label: 'Modifier',
+                      color: primaryColor,
                       onPressed: () async {
                         await Navigator.push(
                           context,
@@ -511,22 +595,32 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
                         _loadBriefs();
                       },
                     ),
-                    if (user.isReferent)
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline,
-                            size: 18, color: Colors.redAccent),
-                        tooltip: 'Supprimer',
-                        onPressed: () => _deleteBrief(brief),
-                      ),
-                    IconButton(
-                      icon: const Icon(Icons.assignment_turned_in_outlined,
-                          size: 18, color: Colors.green),
-                      tooltip: 'Créer débrief',
+
+                  // Bouton Supprimer :
+                  //   • visible uniquement pour référent/manager
+                  //   • masqué si le brief est verrouillé (débrief validé)
+                  if (peutSupprimer) ...[
+                    const SizedBox(width: 4),
+                    _buildActionButton(
+                      icon: Icons.delete_outline,
+                      label: 'Supprimer',
+                      color: Colors.redAccent,
+                      onPressed: () => _deleteBrief(brief),
+                    ),
+                  ],
+
+                  // Bouton Créer débrief (masqué si verrouillé)
+                  if (peutDebriefer) ...[
+                    const SizedBox(width: 4),
+                    _buildActionButton(
+                      icon: Icons.assignment_turned_in_outlined,
+                      label: 'Débrief',
+                      color: Colors.green,
                       onPressed: () => Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => DebriefCreateScreen(
-                            briefId: briefId,
+                            briefId: brief.id!,
                             numBt: brief.numBt,
                             referentNom: brief.referentNom,
                             typeInterventionNom: brief.typeInterventionNom,
@@ -536,12 +630,34 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
                       ),
                     ),
                   ],
-                ),
+                ],
               ),
-          ],
-        ),
-        const SizedBox(height: 8),
-      ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Bouton d'action compact avec icône + label
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
+    return TextButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 15, color: color),
+      label: Text(
+        label,
+        style: TextStyle(
+            fontSize: 11, color: color, fontWeight: FontWeight.w500),
+      ),
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
     );
   }
 }
