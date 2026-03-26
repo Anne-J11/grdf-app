@@ -48,14 +48,14 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
   }
 
   Future<void> _loadAgences() async {
+    // Technicien et référent : l'agenceId vient directement du UserProvider.
+    // Seul le manager peut changer d'agence → on charge la liste uniquement pour lui.
+    final user = context.read<UserProvider>();
+    if (!user.isManager) {
+      setState(() => _agenceSelectionneeId = user.agenceId);
+      return;
+    }
     try {
-      final user = context.read<UserProvider>();
-      if (user.isTechnicien) {
-        setState(() {
-          _agenceSelectionneeId = user.agenceId;
-        });
-        return;
-      }
       final agences = await _firestoreService.getAgences();
       setState(() {
         _agences = agences;
@@ -303,28 +303,31 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
         ],
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Ligne 1 : Agence + Site
-          Row(
-            children: [
-              // Filtre Agence
-              Expanded(
-                child: _buildAgenceDropdown(textColor, bgColor, isDark),
-              ),
-              const SizedBox(width: 12),
-              // Filtre Site
-              Expanded(
-                child: _buildSiteDropdown(textColor, bgColor, isDark),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // Ligne 2 : Date
-          _buildDateFilter(textColor, bgColor, isDark),
-        ],
-      ),
+      child: Builder(builder: (context) {
+        final user = context.read<UserProvider>();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Ligne 1 : Agence (manager uniquement) + Site
+            Row(
+              children: [
+                if (user.isManager) ...[
+                  Expanded(
+                    child: _buildAgenceDropdown(textColor, bgColor, isDark),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(
+                  child: _buildSiteDropdown(textColor, bgColor, isDark),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // Ligne 2 : Date
+            _buildDateFilter(textColor, bgColor, isDark),
+          ],
+        );
+      }),
     );
   }
 

@@ -755,8 +755,11 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Signature Référent : forcée avec le nom du créateur connecté.
+            // Le référent ne peut signer que pour lui-même.
             SignatureWidget(
               roleLabel: 'Référent',
+              forceNom: context.read<UserProvider>().nomComplet,
               initialSignatureBase64: _signatureReferent,
               readOnly: _estVerrouille,
               width: 140,
@@ -773,11 +776,9 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
               },
             ),
             const SizedBox(width: 15),
+            // Signature Technicien : libre, le technicien signe son propre nom.
             SignatureWidget(
               roleLabel: 'Technicien',
-              forceNom: _controller.referentController.text.isNotEmpty
-                  ? _controller.referentController.text
-                  : null,
               initialSignatureBase64: _signatureTechnicien,
               readOnly: _estVerrouille,
               width: 140,

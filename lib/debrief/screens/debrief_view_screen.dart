@@ -46,7 +46,9 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
   Future<void> _loadAgences() async {
     try {
       final user = context.read<UserProvider>();
-      if (user.isTechnicien) {
+      // Technicien et référent : agenceId fixe depuis UserProvider.
+      // Seul le manager peut changer d'agence.
+      if (!user.isManager) {
         setState(() => _agenceSelectionneeId = user.agenceId);
         return;
       }
@@ -219,23 +221,28 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
         ],
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Ligne 1 : Agence + Site
-          Row(
-            children: [
-              Expanded(
-                  child: _buildAgenceDropdown(textColor, bgColor, isDark)),
-              const SizedBox(width: 12),
-              Expanded(child: _buildSiteDropdown(textColor, bgColor, isDark)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // Ligne 2 : Date
-          _buildDateFilter(textColor, bgColor, isDark),
-        ],
-      ),
+      child: Builder(builder: (context) {
+        final user = context.read<UserProvider>();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Ligne 1 : Agence (manager uniquement) + Site
+            Row(
+              children: [
+                if (user.isManager) ...[
+                  Expanded(
+                      child: _buildAgenceDropdown(textColor, bgColor, isDark)),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(child: _buildSiteDropdown(textColor, bgColor, isDark)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // Ligne 2 : Date
+            _buildDateFilter(textColor, bgColor, isDark),
+          ],
+        );
+      }),
     );
   }
 

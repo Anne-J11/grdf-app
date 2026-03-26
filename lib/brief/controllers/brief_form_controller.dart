@@ -24,6 +24,8 @@ class BriefFormController extends ChangeNotifier {
   final TextEditingController commentairesController = TextEditingController();
   final TextEditingController referentController = TextEditingController();
 
+  // Types d'intervention — dédupliqués par id pour éviter les doublons
+  // si Firestore retourne plusieurs fois les mêmes documents (index en cours).
   List<TypeInterventionModel> typesIntervention = [];
   TypeInterventionModel? selectedType;
   DateTime dateIntervention = DateTime.now();
@@ -34,7 +36,6 @@ class BriefFormController extends ChangeNotifier {
 
   // ── Agence / Site ────────────────────────────────────────────────────────
   List<AgenceModel> agences = [];
-  List<SiteModel> sites = [];
   List<SiteModel> sitesFiltres = [];
   String? selectedAgenceId;
   String? selectedSiteId;
@@ -49,17 +50,20 @@ class BriefFormController extends ChangeNotifier {
     isLoading = true;
     notifyListeners();
 
-    // Chargement en parallèle des types et des agences
-    await Future.wait([
-      _typeService.getAllTypes().then((types) => typesIntervention = types),
-      _loadAgences(),
-    ]);
+    // Chargement séquentiel pour éviter les doubles notifyListeners()
+    // qui causaient des rebuilds successifs et des doublons dans le dropdown.
+    try {
+      final types = await _typeService.getAllTypes();
+      // Déduplication par id : si Firestore retourne deux fois le même
+      // document (ex. index manquant), on ne garde qu'un exemplaire.
+      final seen = <String>{};
+      typesIntervention = types
+          .where((t) => seen.add(t.id))
+          .toList();
+    } catch (e) {
+      dev.log('Erreur chargement types : $e');
+    }
 
-    isLoading = false;
-    notifyListeners();
-  }
-
-  Future<void> _loadAgences() async {
     try {
       isLoadingAgences = true;
       agences = await _firestoreService.getAgences();
@@ -68,16 +72,18 @@ class BriefFormController extends ChangeNotifier {
       dev.log('Erreur chargement agences : $e');
       isLoadingAgences = false;
     }
+
+    isLoading = false;
+    notifyListeners(); // un seul appel à la fin
   }
 
-  /// Appelé depuis l'écran pour pré-sélectionner l'agence de l'utilisateur
-  /// et charger les sites correspondants.
+  /// Pré-sélectionne l'agence et le site (utilisateur connecté ou brief existant).
   Future<void> initAgenceSite({
     required String agenceId,
     required String siteId,
   }) async {
     selectedAgenceId = agenceId.isNotEmpty ? agenceId : null;
-    selectedSiteId = null; // sera défini après le chargement des sites
+    selectedSiteId = null;
     if (selectedAgenceId != null) {
       await _loadSitesByAgence(selectedAgenceId!, preselectSiteId: siteId);
     }
@@ -89,7 +95,6 @@ class BriefFormController extends ChangeNotifier {
     selectedSiteId = null;
     sitesFiltres = [];
     notifyListeners();
-
     if (agenceId != null) {
       await _loadSitesByAgence(agenceId);
     }
@@ -103,7 +108,6 @@ class BriefFormController extends ChangeNotifier {
       isLoadingSites = true;
       notifyListeners();
       sitesFiltres = await _firestoreService.getSitesByAgence(agenceId);
-      // Pré-sélection du site si fourni et présent dans la liste
       if (preselectSiteId != null &&
           sitesFiltres.any((s) => s.id == preselectSiteId)) {
         selectedSiteId = preselectSiteId;
@@ -121,8 +125,6 @@ class BriefFormController extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Reste du contrôleur (inchangé) ───────────────────────────────────────
-
   void invalidateSavedBrief() {
     if (lastSavedBriefId != null) {
       lastSavedBriefId = null;
@@ -133,9 +135,7 @@ class BriefFormController extends ChangeNotifier {
   void scheduleAutoSave() {
     if (lastSavedBriefId == null) return;
     _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
-      _autoSave();
-    });
+    _debounceTimer = Timer(const Duration(milliseconds: 500), _autoSave);
   }
 
   Future<void> _autoSave() async {
@@ -143,12 +143,8 @@ class BriefFormController extends ChangeNotifier {
     try {
       isAutoSaving = true;
       notifyListeners();
-
-      final Map<String, dynamic> champsSpecifiques = {};
-      dynamicControllers.forEach((key, controller) {
-        champsSpecifiques[key] = controller.text;
-      });
-
+      final Map<String, dynamic> champs = {};
+      dynamicControllers.forEach((key, c) => champs[key] = c.text);
       await _briefService.updateBrief(lastSavedBriefId!, {
         'num_bt': numBtController.text,
         'referent_nom': referentController.text,
@@ -158,8 +154,7 @@ class BriefFormController extends ChangeNotifier {
         'commentaires': commentairesController.text.isNotEmpty
             ? commentairesController.text
             : null,
-        'champs_specifiques':
-        champsSpecifiques.isNotEmpty ? champsSpecifiques : null,
+        'champs_specifiques': champs.isNotEmpty ? champs : null,
       });
     } catch (e) {
       dev.log('Erreur auto-save : $e');
@@ -169,7 +164,6 @@ class BriefFormController extends ChangeNotifier {
     }
   }
 
-  /// Met à jour les signatures et photos dans Firestore
   Future<void> autoSaveExtras({
     required String briefId,
     String? signatureReferent,
@@ -196,8 +190,7 @@ class BriefFormController extends ChangeNotifier {
   }
 
   void onTypeChanged(TypeInterventionModel? newType) {
-    final oldControllers =
-    Map<String, TextEditingController>.from(dynamicControllers);
+    final old = Map<String, TextEditingController>.from(dynamicControllers);
     dynamicControllers.clear();
     selectedType = newType;
     if (newType != null) {
@@ -208,7 +201,7 @@ class BriefFormController extends ChangeNotifier {
     }
     invalidateSavedBrief();
     notifyListeners();
-    oldControllers.forEach((_, c) => c.dispose());
+    old.forEach((_, c) => c.dispose());
   }
 
   void setDate(DateTime date) {
@@ -219,34 +212,23 @@ class BriefFormController extends ChangeNotifier {
 
   Future<bool> saveBriefWithExtras({
     required String referentId,
-    // agenceId et siteId ne sont plus passés depuis l'écran :
-    // on utilise la sélection interne du contrôleur.
-    // Conservés en fallback pour la compatibilité (pré-remplissage brief existant).
     String? agenceIdFallback,
     String? siteIdFallback,
     Map<String, dynamic>? extraChamps,
   }) async {
     if (selectedType == null) return false;
 
-    final String resolvedAgenceId =
-        selectedAgenceId ?? agenceIdFallback ?? '';
-    final String resolvedSiteId = selectedSiteId ?? siteIdFallback ?? '';
-
-    if (resolvedSiteId.isEmpty) return false;
+    final agenceId = selectedAgenceId ?? agenceIdFallback ?? '';
+    final siteId = selectedSiteId ?? siteIdFallback ?? '';
+    if (siteId.isEmpty) return false;
 
     isSaving = true;
     notifyListeners();
 
     try {
-      final Map<String, dynamic> champsSpecifiques = {};
-
-      dynamicControllers.forEach((key, controller) {
-        champsSpecifiques[key] = controller.text;
-      });
-
-      if (extraChamps != null) {
-        champsSpecifiques.addAll(extraChamps);
-      }
+      final Map<String, dynamic> champs = {};
+      dynamicControllers.forEach((key, c) => champs[key] = c.text);
+      if (extraChamps != null) champs.addAll(extraChamps);
 
       final brief = BriefModel(
         numBt: numBtController.text,
@@ -254,8 +236,8 @@ class BriefFormController extends ChangeNotifier {
         referentId: referentId,
         referentNom: referentController.text,
         typeInterventionNom: selectedType!.nom,
-        agenceId: resolvedAgenceId,
-        siteId: resolvedSiteId,
+        agenceId: agenceId,
+        siteId: siteId,
         dateIntervention: dateIntervention,
         risques: risquesController.text,
         materiel: materielController.text,
@@ -263,8 +245,7 @@ class BriefFormController extends ChangeNotifier {
         commentaires: commentairesController.text.isNotEmpty
             ? commentairesController.text
             : null,
-        champsSpecifiques:
-        champsSpecifiques.isNotEmpty ? champsSpecifiques : null,
+        champsSpecifiques: champs.isNotEmpty ? champs : null,
       );
 
       if (lastSavedBriefId != null) {
