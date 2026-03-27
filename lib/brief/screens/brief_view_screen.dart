@@ -29,7 +29,7 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
   List<SiteModel> _sites = [];
   List<SiteModel> _sitesFiltres = [];
 
-  // Filtres
+  // Filtres (communs référent/manager ET technicien)
   String? _agenceSelectionneeId;
   String? _siteSelectionneId;
   DateTime? _dateSelectionnee;
@@ -48,14 +48,13 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
   }
 
   Future<void> _loadAgences() async {
-    // Technicien et référent : l'agenceId vient directement du UserProvider.
-    // Seul le manager peut changer d'agence → on charge la liste uniquement pour lui.
-    final user = context.read<UserProvider>();
-    if (!user.isManager) {
-      setState(() => _agenceSelectionneeId = user.agenceId);
-      return;
-    }
     try {
+      final user = context.read<UserProvider>();
+      if (user.isTechnicien) {
+        // Le technicien est rattaché à une agence fixe — pas de sélecteur
+        setState(() => _agenceSelectionneeId = user.agenceId);
+        return;
+      }
       final agences = await _firestoreService.getAgences();
       setState(() {
         _agences = agences;
@@ -100,8 +99,34 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
       List<BriefModel> briefs = [];
 
       if (user.isTechnicien) {
-        briefs = await _briefService.getBriefsByReferent(user.uid);
+        // Le technicien voit :
+        //   • tous les briefs de son site,
+        //   • tous les briefs pour lesquels technicien_id == son uid.
+        // Un filtre de date optionnel est appliqué via getBriefsForTechnicien.
+        briefs = await _briefService.getBriefsForTechnicien(
+          uid: user.uid,
+          siteId: user.siteId,
+          dateIntervention: _dateSelectionnee,
+        );
+
+        // Filtre plage de dates (date fin) appliqué côté client
+        if (_dateSelectionnee != null && _dateFinSelectionnee != null) {
+          final fin = DateTime(
+            _dateFinSelectionnee!.year,
+            _dateFinSelectionnee!.month,
+            _dateFinSelectionnee!.day,
+            23,
+            59,
+            59,
+          );
+          briefs = briefs
+              .where((b) =>
+          !b.dateIntervention.isBefore(_dateSelectionnee!) &&
+              !b.dateIntervention.isAfter(fin))
+              .toList();
+        }
       } else {
+        // Référent / manager : filtres agence + site + date
         briefs = await _briefService.getBriefsWithFilters(
           agenceId: _agenceSelectionneeId,
           siteId: _siteSelectionneId,
@@ -114,7 +139,9 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
             _dateFinSelectionnee!.year,
             _dateFinSelectionnee!.month,
             _dateFinSelectionnee!.day,
-            23, 59, 59,
+            23,
+            59,
+            59,
           );
           briefs = briefs
               .where((b) =>
@@ -164,13 +191,15 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('Brief supprimé'), backgroundColor: Colors.green),
+              content: Text('Brief supprimé'),
+              backgroundColor: Colors.green),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Erreur: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -190,7 +219,6 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
     final primaryColor =
     isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
 
-    // Sélection date début
     final DateTime? debut = await showDatePicker(
       context: context,
       initialDate: _dateSelectionnee ?? DateTime.now(),
@@ -210,7 +238,6 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
     );
     if (debut == null) return;
 
-    // Sélection date fin
     final DateTime? fin = await showDatePicker(
       context: context,
       initialDate: _dateFinSelectionnee ?? debut,
@@ -269,8 +296,10 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
       ),
       body: Column(
         children: [
-          // La barre de filtres est toujours affichée pour les non-techniciens
-          if (!user.isTechnicien) _buildFiltresBar(isDark),
+          // La barre de filtres est affichée pour tous les rôles.
+          // Pour le technicien, seul le filtre date est visible (agence/site
+          // sont déterminés automatiquement depuis son profil).
+          _buildFiltresBar(isDark, user.isTechnicien),
           Expanded(child: _buildBody(isDark)),
         ],
       ),
@@ -278,7 +307,8 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
   }
 
   // ── BARRE DE FILTRES ───────────────────────────────────────────────────────
-  Widget _buildFiltresBar(bool isDark) {
+
+  Widget _buildFiltresBar(bool isDark, bool isTechnicien) {
     final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     final textColor = isDark ? Colors.white : Colors.black87;
 
@@ -303,36 +333,31 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
         ],
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Builder(builder: (context) {
-        final user = context.read<UserProvider>();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Ligne 1 : Agence (manager uniquement) + Site
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Ligne agence + site : uniquement pour référent/manager
+          if (!isTechnicien) ...[
             Row(
               children: [
-                if (user.isManager) ...[
-                  Expanded(
-                    child: _buildAgenceDropdown(textColor, bgColor, isDark),
-                  ),
-                  const SizedBox(width: 12),
-                ],
                 Expanded(
-                  child: _buildSiteDropdown(textColor, bgColor, isDark),
-                ),
+                    child:
+                    _buildAgenceDropdown(textColor, bgColor, isDark)),
+                const SizedBox(width: 12),
+                Expanded(
+                    child: _buildSiteDropdown(textColor, bgColor, isDark)),
               ],
             ),
             const SizedBox(height: 8),
-            // Ligne 2 : Date
-            _buildDateFilter(textColor, bgColor, isDark),
           ],
-        );
-      }),
+          // Filtre date : visible par tous les rôles
+          _buildDateFilter(textColor, bgColor, isDark),
+        ],
+      ),
     );
   }
 
   Widget _buildAgenceDropdown(Color textColor, Color bgColor, bool isDark) {
-    // Toujours afficher le widget, même si la liste est vide (chargement en cours)
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
       decoration: BoxDecoration(
@@ -352,7 +377,9 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
               'Agence',
               style: TextStyle(
                   fontSize: 12,
-                  color: isDark ? Colors.grey[500] : Colors.grey[400]),
+                  color: isDark
+                      ? Colors.grey[500]
+                      : Colors.grey[400]),
             )
                 : DropdownButtonHideUnderline(
               child: DropdownButton<String?>(
@@ -373,7 +400,8 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
                     child: Text('Toutes les agences',
                         style: TextStyle(color: textColor)),
                   ),
-                  ..._agences.map((a) => DropdownMenuItem<String?>(
+                  ..._agences
+                      .map((a) => DropdownMenuItem<String?>(
                     value: a.id,
                     child: Text(a.nom,
                         style: TextStyle(color: textColor)),
@@ -406,7 +434,8 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
       ),
       child: Row(
         children: [
-          Icon(Icons.location_on_outlined, size: 15, color: Colors.grey[500]),
+          Icon(Icons.location_on_outlined,
+              size: 15, color: Colors.grey[500]),
           const SizedBox(width: 6),
           Expanded(
             child: DropdownButtonHideUnderline(
@@ -419,8 +448,9 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
                 hint: Text('Tous les sites',
                     style: TextStyle(
                         fontSize: 12,
-                        color:
-                        isDark ? Colors.grey[500] : Colors.grey[500])),
+                        color: isDark
+                            ? Colors.grey[500]
+                            : Colors.grey[500])),
                 items: [
                   DropdownMenuItem<String?>(
                     value: null,
@@ -429,8 +459,8 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
                   ),
                   ..._sitesFiltres.map((s) => DropdownMenuItem<String?>(
                     value: s.id,
-                    child:
-                    Text(s.nom, style: TextStyle(color: textColor)),
+                    child: Text(s.nom,
+                        style: TextStyle(color: textColor)),
                   )),
                 ],
                 onChanged: (val) {
@@ -464,7 +494,8 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
       onTap: _selectionnerDate,
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding:
+        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF2C2C2C) : Colors.grey[50],
           borderRadius: BorderRadius.circular(8),
@@ -491,12 +522,14 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
   }
 
   // ── CORPS DE LA LISTE ──────────────────────────────────────────────────────
+
   Widget _buildBody(bool isDark) {
     final primaryColor =
     isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
 
     if (_isLoading) {
-      return Center(child: CircularProgressIndicator(color: primaryColor));
+      return Center(
+          child: CircularProgressIndicator(color: primaryColor));
     }
     if (_briefs.isEmpty) {
       return Center(
@@ -510,7 +543,8 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
             Text('Aucun brief trouvé',
                 style: TextStyle(
                     fontSize: 18,
-                    color: isDark ? Colors.grey[500] : Colors.grey[600])),
+                    color:
+                    isDark ? Colors.grey[500] : Colors.grey[600])),
           ],
         ),
       );
@@ -527,21 +561,15 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
   }
 
   // ── ITEM BRIEF : carte + barre d'actions ──────────────────────────────────
+
   Widget _buildBriefItem(BriefModel brief, bool isDark) {
     final user = context.read<UserProvider>();
     final primaryColor =
     isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
 
-    // brief.estVerrouille == true  ⟺  un débrief a été validé pour ce brief.
-    // Dans ce cas : Modifier et Créer-débrief sont cachés, mais Supprimer
-    // doit l'être aussi (on ne peut pas supprimer un brief déjà débriefé).
-    // Quand estVerrouille == false : aucun débrief → toutes les actions sont
-    // disponibles selon le rôle.
     final bool peutSupprimer = user.isReferent && !brief.estVerrouille;
     final bool peutModifier = !brief.estVerrouille;
     final bool peutDebriefer = !brief.estVerrouille;
-
-    // La barre d'actions n'a de sens que si au moins un bouton est visible.
     final bool afficherBarre =
         peutModifier || peutSupprimer || peutDebriefer;
 
@@ -550,7 +578,6 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // La carte est cliquable pour voir le détail
           BriefCard(
             brief: brief,
             onTap: () {
@@ -558,15 +585,14 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (_) => BriefCreateScreen(briefExistant: brief)),
+                      builder: (_) =>
+                          BriefCreateScreen(briefExistant: brief)),
                 );
               } else {
                 BriefDetailsModal.show(context, brief);
               }
             },
           ),
-
-          // Barre d'actions sous la carte
           if (afficherBarre)
             Container(
               margin: const EdgeInsets.only(top: 4),
@@ -576,13 +602,14 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
                 color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+                  color: isDark
+                      ? Colors.grey[800]!
+                      : Colors.grey[200]!,
                 ),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  // Bouton Modifier (masqué si verrouillé)
                   if (peutModifier)
                     _buildActionButton(
                       icon: Icons.edit_outlined,
@@ -592,16 +619,12 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
                         await Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (_) =>
-                                  BriefCreateScreen(briefExistant: brief)),
+                              builder: (_) => BriefCreateScreen(
+                                  briefExistant: brief)),
                         );
                         _loadBriefs();
                       },
                     ),
-
-                  // Bouton Supprimer :
-                  //   • visible uniquement pour référent/manager
-                  //   • masqué si le brief est verrouillé (débrief validé)
                   if (peutSupprimer) ...[
                     const SizedBox(width: 4),
                     _buildActionButton(
@@ -611,8 +634,6 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
                       onPressed: () => _deleteBrief(brief),
                     ),
                   ],
-
-                  // Bouton Créer débrief (masqué si verrouillé)
                   if (peutDebriefer) ...[
                     const SizedBox(width: 4),
                     _buildActionButton(
@@ -641,7 +662,6 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
     );
   }
 
-  /// Bouton d'action compact avec icône + label
   Widget _buildActionButton({
     required IconData icon,
     required String label,
@@ -657,7 +677,8 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
             fontSize: 11, color: color, fontWeight: FontWeight.w500),
       ),
       style: TextButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        padding:
+        const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         minimumSize: Size.zero,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),

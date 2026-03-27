@@ -6,7 +6,7 @@ import '../models/brief_model.dart';
 class BriefService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // ✅ NOUVELLE MÉTHODE : Récupérer les briefs avec filtres combinés (UNE DATE)
+  // Récupérer les briefs avec filtres combinés (UNE DATE)
   Future<List<BriefModel>> getBriefsWithFilters({
     String? agenceId,
     String? siteId,
@@ -15,17 +15,14 @@ class BriefService {
     try {
       Query query = _firestore.collection('briefs');
 
-      // Filtre par agence
       if (agenceId != null) {
         query = query.where('agence_id', isEqualTo: agenceId);
       }
 
-      // Filtre par site (prioritaire sur agence si les deux sont fournis)
       if (siteId != null) {
         query = query.where('site_id', isEqualTo: siteId);
       }
 
-      // Filtre par date exacte (toute la journée)
       if (dateIntervention != null) {
         DateTime startOfDay = DateTime(
           dateIntervention.year,
@@ -48,7 +45,6 @@ class BriefService {
             isLessThanOrEqualTo: Timestamp.fromDate(endOfDay));
       }
 
-      // Tri par date décroissante
       query = query.orderBy('date_intervention', descending: true);
 
       QuerySnapshot snapshot = await query.get();
@@ -61,6 +57,81 @@ class BriefService {
           .toList();
     } catch (e) {
       throw Exception('Erreur lors du chargement des briefs: $e');
+    }
+  }
+
+  /// Récupère les briefs visibles par un technicien :
+  /// — briefs du site du technicien,
+  /// — briefs pour lesquels technicien_id == uid du technicien.
+  /// Les deux ensembles sont fusionnés et dédupliqués, puis filtrés
+  /// optionnellement par date.
+  Future<List<BriefModel>> getBriefsForTechnicien({
+    required String uid,
+    required String siteId,
+    DateTime? dateIntervention,
+  }) async {
+    try {
+      // Requête 1 : briefs du site du technicien
+      Query querySite = _firestore
+          .collection('briefs')
+          .where('site_id', isEqualTo: siteId);
+
+      // Requête 2 : briefs explicitement assignés au technicien
+      Query queryAssigne = _firestore
+          .collection('briefs')
+          .where('technicien_id', isEqualTo: uid);
+
+      final results = await Future.wait([
+        querySite.get(),
+        queryAssigne.get(),
+      ]);
+
+      // Fusion + déduplication par ID de document
+      final Map<String, BriefModel> map = {};
+      for (final snapshot in results) {
+        for (final doc in snapshot.docs) {
+          if (!map.containsKey(doc.id)) {
+            map[doc.id] = BriefModel.fromFirestore(
+              doc.data() as Map<String, dynamic>,
+              doc.id,
+            );
+          }
+        }
+      }
+
+      List<BriefModel> briefs = map.values.toList();
+
+      // Filtre optionnel par date (appliqué côté client car les deux requêtes
+      // viennent de collections indépendantes)
+      if (dateIntervention != null) {
+        final start = DateTime(
+          dateIntervention.year,
+          dateIntervention.month,
+          dateIntervention.day,
+        );
+        final end = DateTime(
+          dateIntervention.year,
+          dateIntervention.month,
+          dateIntervention.day,
+          23,
+          59,
+          59,
+        );
+        briefs = briefs
+            .where((b) =>
+        !b.dateIntervention.isBefore(start) &&
+            !b.dateIntervention.isAfter(end))
+            .toList();
+      }
+
+      // Tri anti-chronologique
+      briefs.sort(
+              (a, b) => b.dateIntervention.compareTo(a.dateIntervention));
+
+      return briefs;
+    } catch (e) {
+      throw Exception(
+          'Erreur lors du chargement des briefs technicien: $e');
     }
   }
 
