@@ -46,12 +46,14 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
   Future<void> _loadAgences() async {
     try {
       final user = context.read<UserProvider>();
-      // Technicien et référent : agenceId fixe depuis UserProvider.
-      // Seul le manager peut changer d'agence.
+
+      // Technicien et référent : agence fixée au profil, pas de dropdown agence.
+      // Manager seul peut naviguer entre les agences.
       if (!user.isManager) {
         setState(() => _agenceSelectionneeId = user.agenceId);
         return;
       }
+
       final agences = await _firestoreService.getAgences();
       setState(() {
         _agences = agences;
@@ -96,8 +98,17 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
       List<DebriefModel> debriefs = [];
 
       if (user.isTechnicien) {
-        debriefs = await _debriefService.getDebriefsByReferent(user.uid);
+        // Le technicien voit les débriefs du site sélectionné (ou son site
+        // par défaut si aucun filtre) + les débriefs qui lui sont assignés.
+        debriefs = await _debriefService.getDebriefsForTechnicien(
+          uid: user.uid,
+          siteId: user.siteId,
+          siteIdFiltre: _siteSelectionneId,
+          dateIntervention: _dateSelectionnee,
+        );
       } else {
+        // Référent : agenceId verrouillé à user.agenceId (fixé dans _loadAgences).
+        // Manager : agenceId choisi via le dropdown (peut être null = toutes).
         debriefs = await _debriefService.getDebriefsWithFilters(
           agenceId: _agenceSelectionneeId,
           siteId: _siteSelectionneId,
@@ -112,7 +123,8 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Erreur: $e'), backgroundColor: Colors.red),
         );
       }
       setState(() => _isLoading = false);
@@ -188,7 +200,7 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
       ),
       body: Column(
         children: [
-          if (!user.isTechnicien) _buildFiltresBar(isDark),
+          _buildFiltresBar(isDark, user),
           Expanded(child: _buildBody(isDark)),
         ],
       ),
@@ -196,7 +208,8 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
   }
 
   // ── BARRE DE FILTRES ───────────────────────────────────────────────────────
-  Widget _buildFiltresBar(bool isDark) {
+
+  Widget _buildFiltresBar(bool isDark, UserProvider user) {
     final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     final textColor = isDark ? Colors.white : Colors.black87;
 
@@ -221,28 +234,71 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
         ],
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Builder(builder: (context) {
-        final user = context.read<UserProvider>();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Ligne 1 : Agence (manager uniquement) + Site
-            Row(
-              children: [
-                if (user.isManager) ...[
-                  Expanded(
-                      child: _buildAgenceDropdown(textColor, bgColor, isDark)),
-                  const SizedBox(width: 12),
-                ],
-                Expanded(child: _buildSiteDropdown(textColor, bgColor, isDark)),
-              ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              // Manager : dropdown agence interactif.
+              // Référent et technicien : libellé non interactif (agence fixée).
+              if (user.isManager)
+                Expanded(
+                    child:
+                    _buildAgenceDropdown(textColor, bgColor, isDark))
+              else
+                Expanded(child: _buildAgenceLabel(textColor, isDark)),
+              const SizedBox(width: 12),
+              // Dropdown site : visible pour tous les rôles.
+              // Pour technicien et référent, _sitesFiltres contient
+              // uniquement les sites de leur agence.
+              Expanded(
+                  child: _buildSiteDropdown(textColor, bgColor, isDark)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Filtre date : visible pour tous les rôles
+          _buildDateFilter(textColor, bgColor, isDark),
+        ],
+      ),
+    );
+  }
+
+  /// Libellé non interactif affichant l'agence de l'utilisateur.
+  Widget _buildAgenceLabel(Color textColor, bool isDark) {
+    final user = context.read<UserProvider>();
+    final nom = _agences.isNotEmpty
+        ? _agences
+        .firstWhere(
+          (a) => a.id == user.agenceId,
+      orElse: () =>
+          AgenceModel(id: user.agenceId, nom: user.agenceId),
+    )
+        .nom
+        : user.agenceId;
+
+    return Container(
+      padding:
+      const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF2C2C2C) : Colors.grey[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.business_outlined, size: 15, color: Colors.grey[500]),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              nom,
+              style: TextStyle(fontSize: 12, color: textColor),
+              overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 8),
-            // Ligne 2 : Date
-            _buildDateFilter(textColor, bgColor, isDark),
-          ],
-        );
-      }),
+          ),
+        ],
+      ),
     );
   }
 
@@ -266,8 +322,9 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
               'Agence',
               style: TextStyle(
                   fontSize: 12,
-                  color:
-                  isDark ? Colors.grey[500] : Colors.grey[400]),
+                  color: isDark
+                      ? Colors.grey[500]
+                      : Colors.grey[400]),
             )
                 : DropdownButtonHideUnderline(
               child: DropdownButton<String?>(
@@ -321,7 +378,8 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
       ),
       child: Row(
         children: [
-          Icon(Icons.location_on_outlined, size: 15, color: Colors.grey[500]),
+          Icon(Icons.location_on_outlined,
+              size: 15, color: Colors.grey[500]),
           const SizedBox(width: 6),
           Expanded(
             child: DropdownButtonHideUnderline(
@@ -345,8 +403,8 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
                   ),
                   ..._sitesFiltres.map((s) => DropdownMenuItem<String?>(
                     value: s.id,
-                    child:
-                    Text(s.nom, style: TextStyle(color: textColor)),
+                    child: Text(s.nom,
+                        style: TextStyle(color: textColor)),
                   )),
                 ],
                 onChanged: (val) {
@@ -373,7 +431,8 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
       onTap: _selectionnerDate,
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding:
+        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF2C2C2C) : Colors.grey[50],
           borderRadius: BorderRadius.circular(8),
@@ -392,7 +451,8 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
               ),
             ),
             Icon(Icons.arrow_drop_down,
-                color: isDark ? Colors.grey[500] : Colors.grey[600]),
+                color:
+                isDark ? Colors.grey[500] : Colors.grey[600]),
           ],
         ),
       ),
@@ -400,12 +460,14 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
   }
 
   // ── CORPS DE LA LISTE ──────────────────────────────────────────────────────
+
   Widget _buildBody(bool isDark) {
     final primaryColor =
     isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
 
     if (_isLoading) {
-      return Center(child: CircularProgressIndicator(color: primaryColor));
+      return Center(
+          child: CircularProgressIndicator(color: primaryColor));
     }
     if (_debriefs.isEmpty) {
       return Center(
@@ -436,7 +498,8 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
     );
   }
 
-  // ── ITEM DÉBRIEF : carte + bouton détails ──────────────────────────────────
+  // ── ITEM DÉBRIEF ───────────────────────────────────────────────────────────
+
   Widget _buildDebriefItem(DebriefModel debrief, bool isDark) {
     final primaryColor =
     isDark ? const Color(0xFF4DB8D9) : const Color(0xFF33A1C9);
@@ -449,7 +512,6 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── Carte principale ──
           Card(
             margin: EdgeInsets.zero,
             elevation: isDark ? 0 : 1,
@@ -465,7 +527,6 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Ligne 1 : numéro BT + date
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -491,13 +552,12 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
                         '${debrief.dateIntervention.day.toString().padLeft(2, '0')}/'
                             '${debrief.dateIntervention.month.toString().padLeft(2, '0')}/'
                             '${debrief.dateIntervention.year}',
-                        style:
-                        TextStyle(color: subtitleColor, fontSize: 12),
+                        style: TextStyle(
+                            color: subtitleColor, fontSize: 12),
                       ),
                     ],
                   ),
                   const SizedBox(height: 10),
-                  // Ligne 2 : technicien
                   Row(
                     children: [
                       Icon(Icons.person_outline,
@@ -517,14 +577,13 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
                       ),
                     ],
                   ),
-                  // Commentaire (si présent)
                   if (debrief.commentaires != null &&
                       debrief.commentaires!.isNotEmpty) ...[
                     const SizedBox(height: 6),
                     Text(
                       debrief.commentaires!,
-                      style:
-                      TextStyle(color: subtitleColor, fontSize: 12),
+                      style: TextStyle(
+                          color: subtitleColor, fontSize: 12),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -533,8 +592,6 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
               ),
             ),
           ),
-
-          // ── Barre d'actions sous la carte ──
           Container(
             margin: const EdgeInsets.only(top: 4),
             padding:
