@@ -132,13 +132,15 @@ class HomeScreen extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _buildHomeButton(
+                    if (!user.isTechnicien) ...[
+                _buildHomeButton(
                       text: 'Créer un brief',
                       onPressed: () => Navigator.push(context,
                           MaterialPageRoute(builder: (_) => const BriefCreateScreen())),
                       color: primaryColor,
                     ),
                     const SizedBox(height: 30),
+            ],
                     _buildHomeButton(
                       text: 'Visualisation des briefs',
                       onPressed: () => Navigator.push(context,

@@ -9,6 +9,7 @@ import '../../firestore_service.dart';
 import '../models/debrief_model.dart';
 import '../services/debrief_service.dart';
 import '../widgets/debrief_details_modal.dart';
+import 'lib/';
 
 class DebriefViewScreen extends StatefulWidget {
   const DebriefViewScreen({super.key});
@@ -251,7 +252,9 @@ class _DebriefViewScreenState extends State<DebriefViewScreen> {
               // Dropdown site : visible pour tous les rôles.
               // Pour technicien et référent, _sitesFiltres contient
               // uniquement les sites de leur agence.
-              Expanded(
+
+              if (!user.isTechnicien)
+                Expanded(
                   child: _buildSiteDropdown(textColor, bgColor, isDark)),
             ],
           ),

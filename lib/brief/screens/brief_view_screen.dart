@@ -352,7 +352,8 @@ class _BriefViewScreenState extends State<BriefViewScreen> {
               // Dropdown site : visible pour tous les rôles.
               // Pour le technicien, _sitesFiltres contient les sites de son
               // agence (chargés via _filtrerSitesParAgence).
-              Expanded(
+              if (!user.isTechnicien)
+                Expanded(
                   child: _buildSiteDropdown(textColor, bgColor, isDark)),
             ],
           ),

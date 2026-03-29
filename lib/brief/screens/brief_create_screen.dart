@@ -12,8 +12,8 @@ import '../widgets/app_header.dart';
 import '../widgets/dynamic_fields_section.dart';
 import '../widgets/form_fields.dart';
 import '../models/type_intervention_model.dart';
-import '../../auth/component/signature_widget.dart';
-import '../../auth/component/photo_selection_widget.dart';
+import '../'
+import '../../core/component/photo_selection_widget.dart';
 
 class BriefCreateScreen extends StatefulWidget {
   final BriefModel? briefExistant;
@@ -41,6 +41,7 @@ class _BriefCreateScreenState extends State<BriefCreateScreen> {
     _controller.init().then((_) {
       if (widget.briefExistant != null) {
         _preRemplir(widget.briefExistant!);
+        _controller.lastSavedBriefId = widget.briefExistant!.id;
       } else {
         // Nouveau brief : pré-sélectionner l'agence/site de l'utilisateur
         final user = context.read<UserProvider>();

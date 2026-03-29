@@ -133,7 +133,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     _buildLabel('Email', labelColor),
                     _buildTextField(
                       controller: _emailController,
-                      hint: 'name@exemple.com',
+                      hint: ' nom@exemple.com',
                       keyboardType: TextInputType.emailAddress,
                       fillColor: inputFillColor,
                       borderColor: borderColor,
@@ -217,6 +217,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: _resetPassword,
+                child: Text(
+                  'Mot de passe oublié ?',
+                  style: TextStyle(color: primaryColor, fontSize: 13),
+                ),
+              ),
             ],
           ),
         ),
@@ -272,6 +280,43 @@ class _LoginScreenState extends State<LoginScreen> {
           borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide(color: primaryColor, width: 1.5),
         ),
+      ),
+    );
+  }
+
+  //methode de reinitialisation du mdp
+  Future<void> _resetPassword() async {
+    final emailController = TextEditingController();
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Mot de passe oublié ?'),
+        content: TextField(
+          controller: emailController,
+          keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(
+            hintText: 'Entrez votre email',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              try {
+                await _authService.resetPassword(emailController.text.trim());
+                Navigator.pop(ctx);
+                _showError('Email de réinitialisation envoyé !');
+              } catch (e) {
+                _showError(e.toString().replaceAll('Exception: ', ''));
+              }
+            },
+            child: const Text('Envoyer'),
+          ),
+        ],
       ),
     );
   }
